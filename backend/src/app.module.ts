@@ -15,17 +15,30 @@ import { YoutubeModule } from './youtube/youtube.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get('DB_USERNAME', 'jukebox'),
-        password: config.get('DB_PASSWORD', 'jukebox_secret'),
-        database: config.get('DB_NAME', 'jukebox'),
-        autoLoadEntities: true,
-        synchronize: false, // schema managed by scripts/init-db.sql
-        logging: false,
-      }),
+      useFactory: (config: ConfigService) => {
+        const databaseUrl = config.get<string>('DATABASE_URL');
+        if (databaseUrl) {
+          return {
+            type: 'postgres' as const,
+            url: databaseUrl,
+            ssl: { rejectUnauthorized: false },
+            autoLoadEntities: true,
+            synchronize: false,
+            logging: false,
+          };
+        }
+        return {
+          type: 'postgres' as const,
+          host: config.get('DB_HOST', 'localhost'),
+          port: config.get<number>('DB_PORT', 5432),
+          username: config.get('DB_USERNAME', 'jukebox'),
+          password: config.get('DB_PASSWORD', 'jukebox_secret'),
+          database: config.get('DB_NAME', 'jukebox'),
+          autoLoadEntities: true,
+          synchronize: false,
+          logging: false,
+        };
+      },
     }),
     AuthModule,
     VenuesModule,
