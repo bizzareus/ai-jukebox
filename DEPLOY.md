@@ -1,13 +1,18 @@
 # Deploy Jukebox on Railway
 
-**If you see:** `Railpack could not determine how to build the app` → the service is building from the **repo root**. You must set **Root Directory** for each service (see below).
+Railway does **not** support defining multiple services in one config file. This repo is set up so that:
+
+- **Backend** is built from the **repo root** using `railway.json` + `Dockerfile.backend` (no Root Directory needed).
+- **Frontend** requires a **second service** with **Root Directory** = `frontend`.
+
+**If you see:** `Railpack could not determine how to build the app` → ensure the service is using the repo’s config (Config File path in Settings = `/railway.json` or leave default so the root `railway.json` is used). The root config forces Dockerfile build.
 
 ---
 
 ## 1. New project from GitHub
 
 - [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → `bizzareus/ai-jukebox`
-- Railway creates one service from the repo. **Before anything else:** open that service → **Settings** → **Root Directory** → set to **`backend`** and save. Redeploy so it uses `backend/Dockerfile`.
+- The first service will use the root **`railway.json`** and **`Dockerfile.backend`** and build the backend. **Do not set Root Directory** for this service.
 
 ## 2. Add PostgreSQL
 
@@ -16,7 +21,8 @@
 
 ## 3. Backend service
 
-- Use the service from step 1. Ensure **Settings → Root Directory** is **`backend`** (so Railway builds with `backend/Dockerfile`).
+- Use the service created in step 1. Leave **Root Directory** empty so it uses the root **`railway.json`** and **`Dockerfile.backend`**.
+- Optional: in **Settings → Config**, set Config File path to **`/railway.json`** if Railway didn’t pick it up.
 - **Variables** (required):
 
   | Variable | Value |
@@ -37,7 +43,7 @@ DB migrations (schema + super admin) run automatically on startup via `entrypoin
 ## 4. Frontend service
 
 - **Add Service** → **GitHub Repo** → same repo (`bizzareus/ai-jukebox`).
-- **Settings** → **Root Directory** → set to **`frontend`** (so Railway builds with `frontend/Dockerfile`).
+- **Settings** → **Root Directory** → set to **`frontend`** (this service uses `frontend/Dockerfile`). Config file path can be **`/frontend/railway.json`**.
 - **Variables**:
 
   | Variable | Value |
