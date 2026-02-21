@@ -1,8 +1,13 @@
 # Deploy Jukebox on Railway
 
+**If you see:** `Railpack could not determine how to build the app` → the service is building from the **repo root**. You must set **Root Directory** for each service (see below).
+
+---
+
 ## 1. New project from GitHub
 
 - [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → `bizzareus/ai-jukebox`
+- Railway creates one service from the repo. **Before anything else:** open that service → **Settings** → **Root Directory** → set to **`backend`** and save. Redeploy so it uses `backend/Dockerfile`.
 
 ## 2. Add PostgreSQL
 
@@ -11,7 +16,7 @@
 
 ## 3. Backend service
 
-- Use the existing service created from the repo (or add one and set **Root Directory** = `backend`).
+- Use the service from step 1. Ensure **Settings → Root Directory** is **`backend`** (so Railway builds with `backend/Dockerfile`).
 - **Variables** (required):
 
   | Variable | Value |
@@ -31,8 +36,8 @@ DB migrations (schema + super admin) run automatically on startup via `entrypoin
 
 ## 4. Frontend service
 
-- **Add Service** → **GitHub Repo** → same repo.
-- **Settings** → **Root Directory** = `frontend`.
+- **Add Service** → **GitHub Repo** → same repo (`bizzareus/ai-jukebox`).
+- **Settings** → **Root Directory** → set to **`frontend`** (so Railway builds with `frontend/Dockerfile`).
 - **Variables**:
 
   | Variable | Value |
