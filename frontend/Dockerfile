@@ -7,9 +7,10 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine AS runner
-RUN apk add --no-cache bash
+RUN apk add --no-cache gettext
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 EXPOSE 80
-# nginx official image runs envsubst automatically for files in /etc/nginx/templates/
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/entrypoint.sh"]
