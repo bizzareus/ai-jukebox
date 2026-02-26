@@ -120,7 +120,7 @@ export default function DjMode() {
       }
     };
 
-    const startFade = (player: YTPlayer) => {
+    const startFade = (_player: YTPlayer) => {
       if (fadeStartedRef.current) return;
       fadeStartedRef.current = true;
       clearAll();

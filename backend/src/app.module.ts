@@ -17,7 +17,7 @@ import { YoutubeModule } from './youtube/youtube.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const databaseUrl = config.get<string>('DATABASE_URL');
-        if (databaseUrl) {
+        if (databaseUrl && typeof databaseUrl === 'string') {
           return {
             type: 'postgres' as const,
             url: databaseUrl,
@@ -29,11 +29,11 @@ import { YoutubeModule } from './youtube/youtube.module';
         }
         return {
           type: 'postgres' as const,
-          host: config.get('DB_HOST', 'localhost'),
-          port: config.get<number>('DB_PORT', 5432),
-          username: config.get('DB_USERNAME', 'jukebox'),
-          password: config.get('DB_PASSWORD', 'jukebox_secret'),
-          database: config.get('DB_NAME', 'jukebox'),
+          host: String(config.get('DB_HOST') ?? 'localhost'),
+          port: Number(config.get('DB_PORT')) || 5432,
+          username: String(config.get('DB_USERNAME') ?? 'jukebox'),
+          password: String(config.get('DB_PASSWORD') ?? 'jukebox_secret'),
+          database: String(config.get('DB_NAME') ?? 'jukebox'),
           autoLoadEntities: true,
           synchronize: false,
           logging: false,
