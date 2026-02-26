@@ -22,6 +22,8 @@ import { YoutubeModule } from './youtube/youtube.module';
             type: 'postgres' as const,
             url: databaseUrl,
             ssl: { rejectUnauthorized: false },
+            // Supabase transaction-mode pooler (port 6543) doesn't support prepared statements
+            extra: { statement_timeout: 30000 },
             autoLoadEntities: true,
             synchronize: false,
             logging: false,
