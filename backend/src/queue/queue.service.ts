@@ -235,6 +235,76 @@ export class QueueService {
     return qb.orderBy('q.played_at', 'DESC').getMany();
   }
 
+  /** Last N played/skipped items for DJ replay. */
+  async getRecentPlays(venueId: string, limit = 10): Promise<QueueItem[]> {
+    return this.queueRepository.find({
+      where: {
+        venueId,
+        status: In([QueueItemStatus.PLAYED, QueueItemStatus.SKIPPED]),
+      },
+      relations: ['song'],
+      order: { playedAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  /**
+   * Replay a song from history. No payment (admin replay, price 0).
+   * - immediate: add at front, mark playing (current song if any is marked played).
+   * - queue_next: add at end of queue.
+   */
+  async replay(venueId: string, songId: string, mode: 'immediate' | 'queue_next'): Promise<QueueItem> {
+    await this.songsService.findById(songId);
+
+    if (mode === 'queue_next') {
+      const position = await this.getNextPosition(venueId);
+      const item = this.queueRepository.create({
+        venueId,
+        songId,
+        customerName: 'Replay (admin)',
+        status: QueueItemStatus.PENDING,
+        position,
+      });
+      const saved = await this.queueRepository.save(item);
+      const queue = await this.getVenueQueue(venueId);
+      this.queueGateway.emitQueueUpdated(venueId, queue);
+      this.logger.log(`Replay queued: ${songId} at position ${position} for venue ${venueId}`);
+      return saved;
+    }
+
+    // immediate: add at position 1, shift others up, mark new as playing
+    const pending = await this.queueRepository.find({
+      where: { venueId, status: QueueItemStatus.PENDING },
+      order: { position: 'ASC' },
+    });
+    for (const p of pending) {
+      await this.queueRepository.update(p.id, { position: p.position + 1 });
+    }
+
+    const playing = await this.getNowPlaying(venueId);
+    if (playing) await this.markPlayed(playing.id);
+
+    const item = this.queueRepository.create({
+      venueId,
+      songId,
+      customerName: 'Replay (admin)',
+      status: QueueItemStatus.PLAYING,
+      position: 1,
+    });
+    await this.queueRepository.save(item);
+    const saved = await this.queueRepository.findOne({
+      where: { id: item.id },
+      relations: ['song'],
+    });
+    if (saved) {
+      this.queueGateway.emitNowPlaying(venueId, { queueItem: saved });
+    }
+    const queue = await this.getVenueQueue(venueId);
+    this.queueGateway.emitQueueUpdated(venueId, queue);
+    this.logger.log(`Replay immediate: ${songId} for venue ${venueId}`);
+    return saved ?? item;
+  }
+
   private async getNextPosition(venueId: string): Promise<number> {
     const result = await this.queueRepository
       .createQueryBuilder('q')

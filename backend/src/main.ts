@@ -10,10 +10,15 @@ async function bootstrap() {
 
   const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
     .split(',')
-    .map((o) => o.trim());
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const isNgrokOrigin = (origin: string) =>
+    /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i.test(origin);
   app.enableCors({
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin) || isNgrokOrigin(origin)) return cb(null, true);
       cb(new Error('Not allowed by CORS'));
     },
     credentials: true,

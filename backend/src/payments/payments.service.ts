@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import Razorpay from 'razorpay';
-import * as crypto from 'crypto';
+import { validateWebhookSignature } from 'razorpay/dist/utils/razorpay-utils';
 import { Payment, PaymentStatus } from './payment.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { VenuesService } from '../venues/venues.service';
@@ -61,7 +61,7 @@ export class PaymentsService {
       songId: song.id,
       customerName: dto.customerName,
       customerMobile: dto.customerMobile,
-      razorpayOrderId: order.id as string,
+      razorpayOrderId: order.id,
       amount: venue.pricePerSong,
       status: PaymentStatus.CREATED,
     });
@@ -73,12 +73,14 @@ export class PaymentsService {
       venue.name,
       venue.pricePerSong,
       song.title,
-      order.id as string,
+      order.id,
     );
 
     const keyId = this.configService.get<string>('RAZORPAY_KEY_ID') ?? '';
     const testMode = keyId.startsWith('rzp_test_');
-    this.logger.log(`Created order ${order.id} for song "${song.title}" at venue ${venue.name}${testMode ? ' (test mode)' : ''}`);
+    this.logger.log(
+      `Created order ${order.id} for song "${song.title}" at venue ${venue.name}${testMode ? ' (test mode)' : ''}`,
+    );
 
     return {
       orderId: order.id,
@@ -93,14 +95,52 @@ export class PaymentsService {
     };
   }
 
-  async handleWebhook(rawBody: Buffer, signature: string) {
-    const webhookSecret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET') as string;
-    const expectedSig = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(rawBody)
-      .digest('hex');
+  async handleWebhook(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+  ) {
+    this.logger.log(
+      `Webhook received: rawBody=${rawBody ? `${rawBody.length} bytes` : 'MISSING'}, signature=${signature ? 'present' : 'MISSING'}`,
+    );
 
-    if (expectedSig !== signature) {
+    if (!rawBody || !Buffer.isBuffer(rawBody)) {
+      this.logger.error(
+        'Webhook raw body missing. Ensure Nest is started with rawBody: true and no middleware parses body before the webhook.',
+      );
+      throw new BadRequestException('Webhook body required');
+    }
+
+    if (!signature?.trim()) {
+      this.logger.warn('Webhook x-razorpay-signature header missing');
+      throw new BadRequestException('Missing x-razorpay-signature header');
+    }
+
+    const webhookSecret = this.configService.get<string>(
+      'RAZORPAY_WEBHOOK_SECRET',
+    );
+    if (!webhookSecret) {
+      this.logger.error('RAZORPAY_WEBHOOK_SECRET is not set');
+      throw new BadRequestException('Webhook not configured');
+    }
+
+    const rawBodyString = rawBody.toString();
+    try {
+      const isValid = validateWebhookSignature(
+        rawBodyString,
+        signature.trim(),
+        webhookSecret,
+      );
+      if (!isValid) {
+        this.logger.warn(
+          'Webhook signature mismatch. Check that RAZORPAY_WEBHOOK_SECRET matches the secret in Razorpay Dashboard → Webhooks.',
+        );
+        throw new BadRequestException('Invalid webhook signature');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(
+        `Webhook validation error: ${err instanceof Error ? err.message : String(err)}`,
+      );
       throw new BadRequestException('Invalid webhook signature');
     }
 
@@ -110,7 +150,22 @@ export class PaymentsService {
     this.logger.log(`Razorpay webhook: ${event}`);
 
     if (event === 'payment.captured') {
-      await this.handlePaymentCaptured(payload.payload.payment.entity);
+      const paymentEntity =
+        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
+      if (!paymentEntity) {
+        this.logger.warn(
+          'Razorpay webhook: payment entity missing from payload',
+        );
+        return { received: true };
+      }
+      try {
+        await this.handlePaymentCaptured(paymentEntity);
+      } catch (err) {
+        this.logger.error(
+          `Payment captured handling failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        throw err;
+      }
     }
 
     return { received: true };
@@ -119,6 +174,13 @@ export class PaymentsService {
   private async handlePaymentCaptured(paymentEntity: any) {
     const orderId = paymentEntity.order_id as string;
     const razorpayPaymentId = paymentEntity.id as string;
+
+    if (!orderId || !razorpayPaymentId) {
+      this.logger.warn(
+        `Razorpay webhook: missing order_id or payment id in entity`,
+      );
+      return null;
+    }
 
     const payment = await this.paymentRepository.findOne({
       where: { razorpayOrderId: orderId },
@@ -137,15 +199,25 @@ export class PaymentsService {
     payment.razorpayPaymentId = razorpayPaymentId;
     payment.status = PaymentStatus.PAID;
     const saved = await this.paymentRepository.save(payment);
-    this.logger.log(`Payment captured: ${razorpayPaymentId} for order ${orderId}`);
+    this.logger.log(
+      `Payment captured: ${razorpayPaymentId} for order ${orderId}`,
+    );
 
-    // Enqueue the song now that payment is confirmed
-    await this.queueService.enqueueFromPayment(saved.id);
+    try {
+      await this.queueService.enqueueFromPayment(saved.id);
+    } catch (err) {
+      this.logger.error(
+        `Enqueue from payment failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
+    }
     return saved;
   }
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
-    return this.paymentRepository.findOne({ where: { razorpayOrderId: orderId } });
+    return this.paymentRepository.findOne({
+      where: { razorpayOrderId: orderId },
+    });
   }
 
   /** Public order status for polling: status + queue item when paid (so frontend can show success without relying only on webhook). */
@@ -160,7 +232,9 @@ export class PaymentsService {
     if (payment.status !== PaymentStatus.PAID) {
       return { status: 'created' };
     }
-    const queueItem = await this.queueService.getQueueItemWithEtaByPaymentId(payment.id);
+    const queueItem = await this.queueService.getQueueItemWithEtaByPaymentId(
+      payment.id,
+    );
     return {
       status: 'paid',
       queueItem: queueItem ?? undefined,

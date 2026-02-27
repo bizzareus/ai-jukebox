@@ -42,6 +42,7 @@ export default defineConfig({
     }),
   ],
   server: {
+    allowedHosts: true, // allow ngrok and other tunnel hosts (e.g. *.ngrok-free.app)
     proxy: {
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
       '/queue': { target: 'http://localhost:3001', ws: true },

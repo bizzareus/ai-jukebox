@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -10,6 +11,7 @@ import { QueueService } from './queue.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
 import { Admin } from '../auth/admin.entity';
+import { ReplayDto } from './dto/replay.dto';
 
 @Controller('queue')
 export class QueueController {
@@ -29,6 +31,18 @@ export class QueueController {
   @UseGuards(JwtAuthGuard)
   getHistory(@Param('venueId') venueId: string, @Query('date') date?: string) {
     return this.queueService.getHistory(venueId, date);
+  }
+
+  @Get(':venueId/recent-plays')
+  @UseGuards(JwtAuthGuard)
+  getRecentPlays(@Param('venueId') venueId: string, @Query('limit') limit?: string) {
+    return this.queueService.getRecentPlays(venueId, limit ? parseInt(limit, 10) : 10);
+  }
+
+  @Post('replay')
+  @UseGuards(JwtAuthGuard)
+  replay(@CurrentAdmin() admin: Admin, @Body() dto: ReplayDto) {
+    return this.queueService.replay(admin.venueId, dto.songId, dto.mode);
   }
 
   @Post('advance')

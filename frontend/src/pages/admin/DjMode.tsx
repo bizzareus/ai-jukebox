@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SkipForward, Music2 } from 'lucide-react';
+import { SkipForward, Music2, Play, ListMusic } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -7,8 +8,10 @@ import { useQueue } from '../../hooks/useQueue';
 import { authService } from '../../services/auth';
 import { QueueItemStatus, type QueueItem } from '../../types';
 
-/** Start fading out this many seconds before the end of the track */
-const FADE_OUT_START_SECONDS = 25;
+/** End the video this many seconds before the actual end (stop early like typical jukebox behaviour) */
+const END_VIDEO_BEFORE_SECONDS = 25;
+/** Short fade duration before stopping (smoother transition to next) */
+const FADE_DURATION_SECONDS = 5;
 const FADE_TICK_MS = 250;
 
 declare global {
@@ -46,11 +49,18 @@ export default function DjMode() {
   const admin = authService.getStoredAdmin();
   const venueId = admin?.venueId;
 
+  const queryClient = useQueryClient();
   const { data: queue = [] } = useQueue(venueId);
+  const { data: recentPlays = [] } = useQuery({
+    queryKey: ['recent-plays', venueId],
+    queryFn: () => api.get<QueueItem[]>(`/queue/${venueId}/recent-plays?limit=10`),
+    enabled: !!venueId,
+  });
   const playerRef = useRef<YTPlayer | null>(null);
   const [ytReady, setYtReady] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
 
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -103,7 +113,7 @@ export default function DjMode() {
     }
   }, [ytReady, nowPlaying?.song?.youtubeVideoId, handleAdvance]);
 
-  // Fade out ~25s before end, then advance
+  // End video 20–30s before actual end: check every second, then short fade and stop (inspiration: stopVideo when duration - current <= 20)
   useEffect(() => {
     if (!nowPlaying || !autoAdvance) return;
 
@@ -120,25 +130,25 @@ export default function DjMode() {
       }
     };
 
-    const startFade = (_player: YTPlayer) => {
+    const endEarly = (p: YTPlayer) => {
       if (fadeStartedRef.current) return;
       fadeStartedRef.current = true;
       clearAll();
 
-      const fadeDurationMs = FADE_OUT_START_SECONDS * 1000;
+      const fadeDurationMs = FADE_DURATION_SECONDS * 1000;
       const steps = Math.max(1, Math.floor(fadeDurationMs / FADE_TICK_MS));
       const volumeStep = 100 / steps;
       let step = 0;
 
       fadeIntervalRef.current = setInterval(() => {
-        const p = playerRef.current;
-        if (!p) return;
+        const player = playerRef.current;
+        if (!player) return;
         step += 1;
         const vol = Math.max(0, Math.round(100 - step * volumeStep));
-        p.setVolume(vol);
+        player.setVolume(vol);
         if (vol <= 0) {
           clearAll();
-          p.stopVideo();
+          player.stopVideo();
           handleAdvance();
         }
       }, FADE_TICK_MS);
@@ -151,8 +161,8 @@ export default function DjMode() {
       if (duration <= 0) return;
       const current = p.getCurrentTime();
       const remaining = duration - current;
-      if (remaining <= FADE_OUT_START_SECONDS) {
-        startFade(p);
+      if (remaining <= END_VIDEO_BEFORE_SECONDS) {
+        endEarly(p);
       }
     }, 1000);
 
@@ -163,12 +173,30 @@ export default function DjMode() {
 
   const handleStartFirst = async () => {
     const first = pending[0];
-    if (!first) return;
+    if (!first || !venueId) return;
     setAdvancing(true);
     try {
       await api.post(`/queue/${first.id}/play`, {});
+      queryClient.setQueryData<QueueItem[]>(['queue', venueId], (prev) =>
+        prev?.map((item) =>
+          item.id === first.id ? { ...item, status: QueueItemStatus.PLAYING } : item,
+        ) ?? [],
+      );
+      queryClient.invalidateQueries({ queryKey: ['queue', venueId] });
     } finally {
       setAdvancing(false);
+    }
+  };
+
+  const handleReplay = async (songId: string, mode: 'immediate' | 'queue_next') => {
+    if (!venueId) return;
+    setReplayingId(songId);
+    try {
+      await api.post('/queue/replay', { songId, mode });
+      queryClient.invalidateQueries({ queryKey: ['queue', venueId] });
+      queryClient.invalidateQueries({ queryKey: ['recent-plays', venueId] });
+    } finally {
+      setReplayingId(null);
     }
   };
 
@@ -248,6 +276,69 @@ export default function DjMode() {
           </div>
         </div>
       )}
+
+      {/* Past 10 plays — replay */}
+      <div>
+        <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-2">
+          Past 10 plays
+        </h2>
+        {recentPlays.length === 0 ? (
+          <p className="text-stone-500 text-sm">No plays yet</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {recentPlays.map((item: QueueItem) => (
+              <Card key={item.id} className="flex items-center gap-3 p-3">
+                {item.song?.thumbnailUrl ? (
+                  <img
+                    src={item.song.thumbnailUrl}
+                    alt={item.song.title}
+                    className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+                    <Music2 className="w-4 h-4 text-stone-400" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-stone-900 text-sm font-medium truncate">
+                    {item.song?.title ?? '—'}
+                  </p>
+                  <p className="text-stone-500 text-xs">
+                    {item.playedAt
+                      ? new Date(item.playedAt).toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReplay(item.song.id, 'immediate')}
+                    disabled={replayingId === item.song.id}
+                    className="!py-1.5 !px-2 text-xs"
+                    title="Play now"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReplay(item.song.id, 'queue_next')}
+                    disabled={replayingId === item.song.id}
+                    className="!py-1.5 !px-2 text-xs"
+                    title="Queue next"
+                  >
+                    <ListMusic className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

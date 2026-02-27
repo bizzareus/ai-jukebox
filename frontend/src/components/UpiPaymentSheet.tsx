@@ -82,7 +82,7 @@ export function UpiPaymentSheet({
   customerMobile: customerMobileProp,
 }: UpiPaymentSheetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState<'waiting' | 'success' | 'timeout'>('waiting');
+  const [status, setStatus] = useState<'waiting' | 'verifying' | 'success' | 'timeout'>('waiting');
   const [confirmedPayload, setConfirmedPayload] = useState<QueueConfirmPayload | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -121,6 +121,9 @@ export function UpiPaymentSheet({
       await loadRazorpayScript();
       const Razorpay = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
       const amountPaise = Math.round(order.amount * 100);
+      const contact = customerMobileProp?.trim()
+        ? (customerMobileProp.trim().startsWith('+') ? customerMobileProp.trim() : `+91${customerMobileProp.trim()}`)
+        : undefined;
       const rzp = new Razorpay({
         key: order.razorpayKeyId,
         order_id: order.orderId,
@@ -128,9 +131,13 @@ export function UpiPaymentSheet({
         currency: 'INR',
         name: order.venue?.name ?? 'Jukebox',
         description: order.song?.title ?? 'Song request',
+        prefill: {
+          ...(customerNameProp?.trim() && { name: customerNameProp.trim() }),
+          ...(contact && { contact }),
+        },
         handler: () => {
-          // Show success immediately; queue data will come from socket or polling
-          setStatus('success');
+          // Payment completed in Razorpay; show verifying until webhook/socket confirms and we have queue data
+          setStatus('verifying');
           if (timerRef.current) clearTimeout(timerRef.current);
         },
       });
@@ -370,11 +377,33 @@ export function UpiPaymentSheet({
           </>
         )}
 
+        {status === 'verifying' && (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <Loader2 className="w-14 h-14 text-brand-500 animate-spin" />
+            <p className="text-stone-900 font-semibold text-lg">Payment completed</p>
+            <p className="text-stone-500 text-sm text-center">
+              Verifying and adding your song to the queue...
+            </p>
+          </div>
+        )}
+
         {status === 'success' && (
-          <div className="flex flex-col items-center gap-3 py-6">
+          <div className="flex flex-col items-center gap-4 py-6">
             <CheckCircle className="w-16 h-16 text-green-400" />
             <p className="text-stone-900 font-semibold text-lg">Payment Received!</p>
-            <p className="text-stone-500 text-sm">Adding your song to the queue...</p>
+            <p className="text-stone-500 text-sm">Your song has been added to the queue.</p>
+            {confirmedPayload && (
+              <div className="w-full rounded-xl bg-stone-50 border border-stone-200 p-4 space-y-2 text-center">
+                <p className="text-stone-900 font-medium">
+                  Your song is <span className="text-brand-600">#{confirmedPayload.position}</span> in the queue
+                </p>
+                <p className="text-stone-500 text-sm">
+                  {confirmedPayload.eta <= 0
+                    ? 'Up next!'
+                    : `Estimated to play in ~${Math.ceil(confirmedPayload.eta / 60)} min`}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

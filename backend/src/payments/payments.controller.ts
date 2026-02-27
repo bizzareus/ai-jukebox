@@ -33,9 +33,9 @@ export class PaymentsController {
   @Post('webhook')
   webhook(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-razorpay-signature') signature: string,
+    @Headers('x-razorpay-signature') signature: string | undefined,
   ) {
-    return this.paymentsService.handleWebhook(req.rawBody!, signature);
+    return this.paymentsService.handleWebhook(req.rawBody, signature);
   }
 
   @Get('earnings')

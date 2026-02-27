@@ -6,10 +6,19 @@ import { Card } from '../../components/ui/Card';
 import { authService } from '../../services/auth';
 import type { QueueItem } from '../../types';
 
+interface PaymentRow {
+  id: string;
+  amount: number;
+  createdAt: string;
+  songId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string | null;
+}
+
 interface EarningsData {
   total: number;
   count: number;
-  payments: { id: string; amount: number; createdAt: string; songId: string }[];
+  payments: PaymentRow[];
 }
 
 export default function Analytics() {
@@ -63,6 +72,37 @@ export default function Analytics() {
           <p className="text-stone-500 text-xs">Songs paid</p>
         </Card>
       </div>
+
+      {/* Payments table */}
+      <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Payments</h2>
+      {!earnings?.payments?.length ? (
+        <p className="text-stone-500 text-sm mb-5">No payments in this period</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-surface-border mb-5">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 border-b border-surface-border text-left text-stone-500 uppercase tracking-wider text-xs">
+                <th className="px-4 py-3 font-medium">Date</th>
+                <th className="px-4 py-3 font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Razorpay Order ID</th>
+                <th className="px-4 py-3 font-medium">Razorpay Payment ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {earnings.payments.map((p) => (
+                <tr key={p.id} className="border-b border-surface-border last:border-0">
+                  <td className="px-4 py-3 text-stone-900">
+                    {new Date(p.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                  </td>
+                  <td className="px-4 py-3 text-stone-900">₹{p.amount}</td>
+                  <td className="px-4 py-3 font-mono text-stone-600 text-xs">{p.razorpayOrderId}</td>
+                  <td className="px-4 py-3 font-mono text-stone-600 text-xs">{p.razorpayPaymentId ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Song history */}
       <h2 className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">Song History</h2>
