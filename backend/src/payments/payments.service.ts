@@ -17,6 +17,19 @@ import { VenuesService } from '../venues/venues.service';
 import { SongsService } from '../songs/songs.service';
 import { QueueService } from '../queue/queue.service';
 
+/** Razorpay webhook payload (payment.captured). */
+interface RazorpayWebhookPayload {
+  event: string;
+  payload?: { payment?: { entity?: RazorpayPaymentEntity } };
+  payment?: { entity?: RazorpayPaymentEntity };
+}
+
+/** Razorpay payment entity from webhook. */
+interface RazorpayPaymentEntity {
+  id: string;
+  order_id: string;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -38,7 +51,10 @@ export class PaymentsService {
   }
 
   /** Effective price after flat discount (min 1). */
-  private effectivePrice(venue: { pricePerSong: number; discountAmount?: number }): number {
+  private effectivePrice(venue: {
+    pricePerSong: number;
+    discountAmount?: number;
+  }): number {
     const discount = venue.discountAmount ?? 0;
     return Math.max(1, venue.pricePerSong - discount);
   }
@@ -151,13 +167,13 @@ export class PaymentsService {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const payload = JSON.parse(rawBody.toString());
-    const event = payload.event as string;
+    const payload = JSON.parse(rawBody.toString()) as RazorpayWebhookPayload;
+    const event = payload.event;
 
     this.logger.log(`Razorpay webhook: ${event}`);
 
     if (event === 'payment.captured') {
-      const paymentEntity =
+      const paymentEntity: RazorpayPaymentEntity | undefined =
         payload?.payload?.payment?.entity ?? payload?.payment?.entity;
       if (!paymentEntity) {
         this.logger.warn(
@@ -178,9 +194,11 @@ export class PaymentsService {
     return { received: true };
   }
 
-  private async handlePaymentCaptured(paymentEntity: any) {
-    const orderId = paymentEntity.order_id as string;
-    const razorpayPaymentId = paymentEntity.id as string;
+  private async handlePaymentCaptured(
+    paymentEntity: RazorpayPaymentEntity,
+  ): Promise<Payment | null> {
+    const orderId = paymentEntity.order_id;
+    const razorpayPaymentId = paymentEntity.id;
 
     if (!orderId || !razorpayPaymentId) {
       this.logger.warn(

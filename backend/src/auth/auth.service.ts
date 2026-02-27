@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -11,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { Admin } from './admin.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -59,6 +61,20 @@ export class AuthService {
 
   async me(adminId: string) {
     return this.adminRepository.findOne({ where: { id: adminId }, relations: ['venue'] });
+  }
+
+  async changePassword(adminId: string, dto: ChangePasswordDto) {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    if (!admin) {
+      throw new UnauthorizedException('Admin not found');
+    }
+    const match = await bcrypt.compare(dto.currentPassword, admin.passwordHash);
+    if (!match) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    admin.passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    await this.adminRepository.save(admin);
+    this.logger.log(`Password changed for admin: ${admin.email}`);
   }
 
   private buildTokenResponse(admin: Admin) {

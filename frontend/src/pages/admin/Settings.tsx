@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Tag } from 'lucide-react';
+import { Tag, Lock } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -22,6 +22,13 @@ export default function Settings() {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
 
   useEffect(() => {
     if (venue) {
@@ -47,6 +54,34 @@ export default function Settings() {
       setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setChangePasswordError(null);
+    if (newPassword.length < 8) {
+      setChangePasswordError('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError('New password and confirmation do not match');
+      return;
+    }
+    setChangePasswordLoading(true);
+    try {
+      await api.patch('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setChangePasswordSuccess(true);
+      setTimeout(() => setChangePasswordSuccess(false), 3000);
+    } catch (e) {
+      setChangePasswordError(e instanceof Error ? e.message : 'Failed to change password');
+    } finally {
+      setChangePasswordLoading(false);
     }
   };
 
@@ -109,6 +144,52 @@ export default function Settings() {
           )}
           <Button onClick={handleSave} loading={saving}>
             {saved ? 'Saved' : 'Save'}
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+          <Lock className="w-4 h-4" />
+          Change password
+        </h2>
+        <p className="text-stone-500 text-xs mb-4">
+          Update your account password. Use at least 8 characters for the new password.
+        </p>
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Current password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          <Input
+            label="New password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          <Input
+            label="Confirm new password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          {changePasswordError && (
+            <p className="text-sm text-red-600">{changePasswordError}</p>
+          )}
+          {changePasswordSuccess && (
+            <p className="text-sm text-green-600">Password updated successfully.</p>
+          )}
+          <Button
+            onClick={handleChangePassword}
+            loading={changePasswordLoading}
+            disabled={!currentPassword || !newPassword || !confirmPassword}
+          >
+            {changePasswordSuccess ? 'Done' : 'Change password'}
           </Button>
         </div>
       </Card>
