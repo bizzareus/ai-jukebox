@@ -1,20 +1,24 @@
 #!/bin/sh
 set -e
 
-echo "Running DB migrations..."
-
-if [ -n "$DATABASE_URL" ]; then
-  # For Supabase: use session mode URL (port 5432) for migrations if provided,
-  # otherwise use the pooler URL (note: some DDL may fail on transaction-mode pooler)
-  MIGRATION_URL="${DATABASE_MIGRATION_URL:-$DATABASE_URL}"
-  psql "$MIGRATION_URL" -f scripts/init-db.sql || echo "init-db.sql already applied, continuing..."
-  psql "$MIGRATION_URL" -f scripts/add-global-playlist-and-super-admin.sql || echo "super-admin migration already applied, continuing..."
-  psql "$MIGRATION_URL" -f scripts/add-customer-mobile.sql || echo "customer-mobile migration already applied, continuing..."
-else
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/init-db.sql || echo "init-db.sql already applied, continuing..."
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-global-playlist-and-super-admin.sql || echo "super-admin migration already applied, continuing..."
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-customer-mobile.sql || echo "customer-mobile migration already applied, continuing..."
-fi
+# Run migrations in background so the server can start and pass healthcheck.
+# If you use Supabase and already ran supabase-setup.sql, migrations are no-ops.
+run_migrations() {
+  echo "Running DB migrations (background)..."
+  if [ -n "$DATABASE_URL" ]; then
+    MIGRATION_URL="${DATABASE_MIGRATION_URL:-$DATABASE_URL}"
+    psql "$MIGRATION_URL" -f scripts/init-db.sql 2>/dev/null || true
+    psql "$MIGRATION_URL" -f scripts/add-global-playlist-and-super-admin.sql 2>/dev/null || true
+    psql "$MIGRATION_URL" -f scripts/add-customer-mobile.sql 2>/dev/null || true
+  else
+    [ -z "$DB_PASSWORD" ] && return
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/init-db.sql 2>/dev/null || true
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-global-playlist-and-super-admin.sql 2>/dev/null || true
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-customer-mobile.sql 2>/dev/null || true
+  fi
+  echo "Migrations finished."
+}
+run_migrations &
 
 echo "Starting Jukebox API..."
 exec node dist/main.js
