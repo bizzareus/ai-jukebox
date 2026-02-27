@@ -1,7 +1,4 @@
-const BASE =
-  import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
-    ? `${String(import.meta.env.VITE_API_URL).replace(/\/$/, '')}/api`
-    : '/api';
+const BASE = "https://ai-jukebox-backend-production.up.railway.app/api";
 function getToken(): string | null {
   return localStorage.getItem("jukebox_token");
 }
