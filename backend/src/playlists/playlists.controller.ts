@@ -12,6 +12,7 @@ import { PlaylistsService } from './playlists.service';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { AddSongDto } from './dto/add-song.dto';
 import { AddSongByUrlDto } from './dto/add-song-by-url.dto';
+import { AddGlobalByPlaylistDto } from './dto/add-global-by-playlist.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 
@@ -36,6 +37,12 @@ export class PlaylistsController {
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   addSongToGlobalByUrl(@Body() dto: AddSongByUrlDto) {
     return this.playlistsService.addSongToGlobalByYoutubeUrl(dto.youtubeUrl);
+  }
+
+  @Post('playlists/global/songs/by-playlist')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  addSongsToGlobalByPlaylist(@Body() dto: AddGlobalByPlaylistDto) {
+    return this.playlistsService.addSongsToGlobalByPlaylistId(dto.youtubePlaylistId);
   }
 
   @Delete('playlists/global/songs/:songId')

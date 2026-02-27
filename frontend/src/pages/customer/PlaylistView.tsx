@@ -1,7 +1,9 @@
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Music2, IndianRupee } from 'lucide-react';
+import { ArrowLeft, Music2, IndianRupee, Search } from 'lucide-react';
 import { api } from '../../services/api';
+import { Input } from '../../components/ui/Input';
 import { useQueue } from '../../hooks/useQueue';
 import { NowPlayingBar } from '../../components/NowPlayingBar';
 import type { Playlist, Venue } from '../../types';
@@ -24,6 +26,23 @@ export default function PlaylistView() {
 
   const { data: queue = [] } = useQueue(venue?.id);
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const songs = useMemo(
+    () => (playlist?.playlistSongs ?? []).sort((a, b) => a.sortOrder - b.sortOrder),
+    [playlist?.playlistSongs],
+  );
+
+  const filteredSongs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return songs;
+    return songs.filter((ps) => {
+      const title = ps.song?.title?.toLowerCase() ?? '';
+      const artist = ps.song?.channelName?.toLowerCase() ?? '';
+      return title.includes(q) || artist.includes(q);
+    });
+  }, [songs, searchQuery]);
+
   if (!playlist) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface">
@@ -31,8 +50,6 @@ export default function PlaylistView() {
       </div>
     );
   }
-
-  const songs = (playlist.playlistSongs ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
     <div className="min-h-screen bg-surface pb-24">
@@ -61,6 +78,18 @@ export default function PlaylistView() {
         </div>
       </div>
 
+      {/* Search */}
+      {songs.length > 0 && (
+        <div className="px-4 mt-3">
+          <Input
+            placeholder="Search in this playlist..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            icon={<Search className="w-4 h-4" />}
+          />
+        </div>
+      )}
+
       {/* Song list */}
       <div className="px-4 mt-2">
         {songs.length === 0 ? (
@@ -68,11 +97,15 @@ export default function PlaylistView() {
             <Music2 className="w-10 h-10 mx-auto mb-3 opacity-50" />
             <p className="text-sm">No songs in this collection yet</p>
           </div>
+        ) : filteredSongs.length === 0 ? (
+          <div className="text-center py-12 text-stone-500">
+            <p className="text-sm">No songs match &quot;{searchQuery}&quot;</p>
+          </div>
         ) : (
-          songs.map((ps, index) => (
+          filteredSongs.map((ps, index) => (
             <button
               key={ps.id}
-              onClick={() => navigate(`/${slug}/song/${ps.song.id}?venueId=${venue?.id}`)}
+              onClick={() => navigate(`/${slug}/song/${ps.song.id}?venueId=${venue?.id}`, { state: { song: ps.song } })}
               className="flex items-center gap-3 p-3 rounded-xl hover:bg-stone-50 transition-colors w-full text-left active:scale-[0.98]"
             >
               <span className="text-stone-500 text-sm w-5 text-center flex-shrink-0">{index + 1}</span>

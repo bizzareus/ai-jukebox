@@ -54,6 +54,19 @@ interface OrderStatusResponse {
   queueItem?: { id: string; position: number; eta: number };
 }
 
+function formatEtaMessage(etaSeconds: number): string {
+  if (etaSeconds <= 0) return 'Up next!';
+  const totalMins = Math.ceil(etaSeconds / 60);
+  if (totalMins < 60) {
+    return `Your song will come up in approx ${totalMins} ${totalMins === 1 ? 'min' : 'mins'}`;
+  }
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  const parts = [`${hours} ${hours === 1 ? 'hr' : 'hrs'}`];
+  if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'min' : 'mins'}`);
+  return `Your song will come up in approx ${parts.join(' ')}`;
+}
+
 function loadRazorpayScript(): Promise<void> {
   if (typeof window !== 'undefined' && (window as unknown as { Razorpay?: unknown }).Razorpay) {
     return Promise.resolve();
@@ -398,9 +411,12 @@ export function UpiPaymentSheet({
                   Your song is <span className="text-brand-600">#{confirmedPayload.position}</span> in the queue
                 </p>
                 <p className="text-stone-500 text-sm">
-                  {confirmedPayload.eta <= 0
-                    ? 'Up next!'
-                    : `Estimated to play in ~${Math.ceil(confirmedPayload.eta / 60)} min`}
+                  {formatEtaMessage(confirmedPayload.eta)}
+                </p>
+                <p className="text-stone-400 text-xs">
+                  {confirmedPayload.position <= 1
+                    ? 'You’re next!'
+                    : `Time is based on the total length of the ${confirmedPayload.position - 1} song${confirmedPayload.position === 2 ? '' : 's'} ahead of you.`}
                 </p>
               </div>
             )}

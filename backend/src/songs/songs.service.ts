@@ -60,4 +60,9 @@ export class SongsService {
   async findByYoutubeId(youtubeVideoId: string): Promise<Song | null> {
     return this.songRepository.findOne({ where: { youtubeVideoId } });
   }
+
+  /** Get all video IDs from a YouTube playlist (for bulk import). */
+  async getPlaylistVideoIds(playlistId: string): Promise<string[]> {
+    return this.youtubeService.getPlaylistVideoIds(playlistId);
+  }
 }

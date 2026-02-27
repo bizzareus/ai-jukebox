@@ -158,22 +158,27 @@ export class QueueService {
   }
 
   /**
-   * When queue is empty: enqueue one random song from the venue's playlists
-   * that has not been played in the last AUTO_PLAY_RECENT_HOURS.
-   * Returns the new queue item or null if no eligible song.
+   * When queue is empty: enqueue one random song from the venue's playlists.
+   * Prefers songs not played in the last AUTO_PLAY_RECENT_HOURS; if all were
+   * played recently, falls back to any song from the playlist.
+   * Returns the new queue item or null if venue has no playlist songs.
    */
   async enqueueRandomFromPlaylist(venueId: string): Promise<QueueItem | null> {
     const recentSongIds = await this.getRecentlyPlayedSongIds(venueId, AUTO_PLAY_RECENT_HOURS);
     const playlists = await this.playlistsService.findByVenue(venueId);
-    const candidateSet = new Set<string>();
+    const allSet = new Set<string>();
+    const preferredSet = new Set<string>();
     for (const p of playlists) {
       for (const ps of p.playlistSongs ?? []) {
-        if (ps.songId && !recentSongIds.has(ps.songId)) candidateSet.add(ps.songId);
+        if (!ps.songId) continue;
+        allSet.add(ps.songId);
+        if (!recentSongIds.has(ps.songId)) preferredSet.add(ps.songId);
       }
     }
-    const candidateSongIds = [...candidateSet];
+    const candidateSongIds =
+      preferredSet.size > 0 ? [...preferredSet] : [...allSet];
     if (candidateSongIds.length === 0) {
-      this.logger.log(`No playlist song available (all played in last ${AUTO_PLAY_RECENT_HOURS}h) for venue ${venueId}`);
+      this.logger.log(`No playlist songs for venue ${venueId}`);
       return null;
     }
     const randomIndex = Math.floor(Math.random() * candidateSongIds.length);
@@ -182,6 +187,7 @@ export class QueueService {
     const item = this.queueRepository.create({
       venueId,
       songId,
+      customerName: 'System',
       status: QueueItemStatus.PENDING,
       position,
     });

@@ -42,6 +42,7 @@ declare global {
     getDuration: () => number;
     getVolume: () => number;
     setVolume: (volume: number) => void;
+    unMute: () => void;
   }
 }
 
@@ -76,11 +77,14 @@ export default function DjMode() {
     setAdvancing(true);
     try {
       await api.post('/queue/advance', {});
+      await queryClient.invalidateQueries({ queryKey: ['queue', venueId] });
+    } catch (e) {
+      console.log('Queue advance failed:', e);
     } finally {
       setAdvancing(false);
       advancingRef.current = false;
     }
-  }, [venueId]);
+  }, [venueId, queryClient]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -95,14 +99,27 @@ export default function DjMode() {
   useEffect(() => {
     if (!ytReady || !nowPlaying) return;
 
+    const ensureFullVolume = (player: YTPlayer) => {
+      try {
+        if (typeof player.unMute === 'function') player.unMute();
+        if (typeof player.setVolume === 'function') player.setVolume(100);
+      } catch (e) {
+        console.log('YouTube player volume setup:', e);
+      }
+    };
+
     if (playerRef.current) {
       playerRef.current.loadVideoById(nowPlaying.song.youtubeVideoId);
       playerRef.current.playVideo();
+      ensureFullVolume(playerRef.current);
     } else {
       playerRef.current = new window.YT.Player('yt-player', {
         videoId: nowPlaying.song.youtubeVideoId,
         playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1 },
         events: {
+          onReady: (e) => {
+            ensureFullVolume(e.target);
+          },
           onStateChange: (e) => {
             if (e.data === window.YT.PlayerState.ENDED && autoAdvance) {
               handleAdvance();
@@ -238,7 +255,9 @@ export default function DjMode() {
           <div className="flex-1 min-w-0">
             <p className="text-stone-900 font-semibold truncate">{nowPlaying.song.title}</p>
             {nowPlaying.customerName && (
-              <p className="text-brand-400 text-xs">Requested by {nowPlaying.customerName}</p>
+              <p className="text-brand-400 text-xs">
+                {nowPlaying.customerName === 'System' ? 'Played by system' : `Requested by ${nowPlaying.customerName}`}
+              </p>
             )}
           </div>
           <Button onClick={handleAdvance} loading={advancing} variant="outline" size="sm">
@@ -263,7 +282,11 @@ export default function DjMode() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-stone-900 text-sm font-medium truncate">{item.song.title}</p>
-                  {item.customerName && <p className="text-stone-500 text-xs">{item.customerName}</p>}
+                  {(item.customerName && (
+                    <p className="text-stone-500 text-xs">
+                      {item.customerName === 'System' ? 'Played by system' : item.customerName}
+                    </p>
+                  ))}
                 </div>
                 <button
                   onClick={() => api.post(`/queue/${item.id}/skip`, {})}

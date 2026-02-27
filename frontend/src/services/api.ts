@@ -18,7 +18,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const err = await res.json().catch(() => ({ message: "Request failed" }));
     throw new Error(err.message ?? "Request failed");
   }
-  return res.json() as Promise<T>;
+  const contentType = res.headers.get("content-type");
+  const contentLength = res.headers.get("content-length");
+  const hasNoBody = res.status === 204 || contentLength === "0";
+  if (hasNoBody || !contentType?.includes("application/json")) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text || text.trim() === "") return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined as T;
+  }
 }
 
 export const api = {

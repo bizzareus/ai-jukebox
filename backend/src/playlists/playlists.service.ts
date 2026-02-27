@@ -136,6 +136,44 @@ export class PlaylistsService {
     await this.removeSong(global.id, songId);
   }
 
+  /**
+   * Super admin: fetch all videos from a YouTube playlist and add them to the global library.
+   * Accepts playlist ID (e.g. PLxxx) or URL with list= parameter.
+   */
+  async addSongsToGlobalByPlaylistId(youtubePlaylistId: string): Promise<{ added: number; skipped: number; errors: string[] }> {
+    const videoIds = await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
+    if (videoIds.length === 0) {
+      throw new NotFoundException('Playlist not found or has no videos. Use a playlist ID (e.g. PLxxx) or a URL with list=...');
+    }
+    const global = await this.getOrCreateGlobalPlaylist();
+    let added = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    for (const videoId of videoIds) {
+      try {
+        await this.songsService.upsertFromYoutube(videoId);
+        const hasSong = await this.playlistSongRepository
+          .createQueryBuilder('ps')
+          .innerJoin('ps.song', 's')
+          .where('ps.playlistId = :playlistId', { playlistId: global.id })
+          .andWhere('s.youtubeVideoId = :videoId', { videoId })
+          .getOne();
+        if (hasSong) {
+          skipped += 1;
+          continue;
+        }
+        await this.addSong(global.id, { youtubeVideoId: videoId });
+        added += 1;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${videoId}: ${msg}`);
+        this.logger.warn(`Failed to add video ${videoId}: ${msg}`);
+      }
+    }
+    this.logger.log(`Global playlist import: ${added} added, ${skipped} skipped, ${errors.length} errors`);
+    return { added, skipped, errors };
+  }
+
   /** Songs in this venue's playlists, ordered by YouTube view count (most popular first). */
   async getPopularSongsForVenue(venueId: string, limit = 20): Promise<Song[]> {
     const rows = await this.playlistSongRepository

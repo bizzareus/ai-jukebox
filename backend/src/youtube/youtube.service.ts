@@ -93,6 +93,48 @@ export class YoutubeService {
     };
   }
 
+  /**
+   * Fetch all video IDs from a YouTube playlist (handles pagination).
+   * Playlist ID can be from URL e.g. ...list=PLxxx or just PLxxx.
+   */
+  async getPlaylistVideoIds(playlistId: string): Promise<string[]> {
+    const id = this.normalizePlaylistId(playlistId);
+    if (!id) {
+      this.logger.warn(`Invalid playlist ID: ${playlistId}`);
+      return [];
+    }
+    this.logger.log(`Fetching YouTube playlist items: ${id}`);
+    const videoIds: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const { data } = await axios.get(`${YT_BASE}/playlistItems`, {
+        params: {
+          part: 'snippet',
+          playlistId: id,
+          maxResults: 50,
+          key: this.apiKey,
+          pageToken,
+        },
+      });
+      for (const item of data.items ?? []) {
+        const videoId = item.snippet?.resourceId?.videoId;
+        const kind = item.snippet?.resourceId?.kind;
+        if (videoId && kind === 'youtube#video') videoIds.push(videoId);
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+    this.logger.log(`Playlist ${id}: ${videoIds.length} video(s)`);
+    return videoIds;
+  }
+
+  /** Extract playlist ID from URL or return as-is if already ID (e.g. PL...). */
+  private normalizePlaylistId(input: string): string | null {
+    const trimmed = input.trim();
+    if (/^PL[\w-]+$/i.test(trimmed)) return trimmed;
+    const match = trimmed.match(/[?&]list=([^&\s]+)/);
+    return match ? match[1] : null;
+  }
+
   /** Convert ISO 8601 duration (PT4M13S) to seconds */
   private parseDuration(iso: string): number {
     const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
