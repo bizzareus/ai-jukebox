@@ -1,4 +1,7 @@
-const BASE = '/api';
+const BASE =
+  import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
+    ? `${String(import.meta.env.VITE_API_URL).replace(/\/$/, '')}/api`
+    : '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('jukebox_token');
