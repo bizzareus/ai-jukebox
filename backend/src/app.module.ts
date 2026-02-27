@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { VenuesModule } from './venues/venues.module';
 import { SongsModule } from './songs/songs.module';
@@ -10,6 +12,8 @@ import { QueueModule } from './queue/queue.module';
 import { YoutubeModule } from './youtube/youtube.module';
 
 @Module({
+  controllers: [AppController],
+  providers: [AppService],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({
@@ -22,11 +26,19 @@ import { YoutubeModule } from './youtube/youtube.module';
             type: 'postgres' as const,
             url: databaseUrl,
             ssl: { rejectUnauthorized: false },
-            // Supabase transaction-mode pooler (port 6543) doesn't support prepared statements
-            extra: { statement_timeout: 30000 },
+            // Use Supabase direct (db.*.supabase.co:5432) or session pooler (port 5432) for persistent backends like Railway
+            extra: {
+              statement_timeout: 30000,
+              max: 10,
+              connectionTimeoutMillis: 4000, // fail fast so we get more retries within healthcheck window
+              prepare: false, // required for Supavisor transaction mode
+            },
             autoLoadEntities: true,
             synchronize: false,
             logging: false,
+            // Retry within healthcheck window (e.g. Railway 2m): more attempts so app can pass once DB is ready
+            retryAttempts: 30,
+            retryDelay: 2000,
           };
         }
         return {
@@ -39,6 +51,8 @@ import { YoutubeModule } from './youtube/youtube.module';
           autoLoadEntities: true,
           synchronize: false,
           logging: false,
+          retryAttempts: 30,
+          retryDelay: 2000,
         };
       },
     }),

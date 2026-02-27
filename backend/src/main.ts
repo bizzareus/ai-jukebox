@@ -3,6 +3,9 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+    console.warn('No DATABASE_URL or DB_HOST set — DB connection may fail.');
+  }
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
@@ -27,4 +30,7 @@ async function bootstrap() {
   console.log(`Jukebox API running on port ${port}`);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Failed to start:', err);
+  process.exit(1);
+});
