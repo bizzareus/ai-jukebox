@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import * as QRCode from 'qrcode';
 import { Venue } from './venue.entity';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { UpdateVenueDto } from './dto/update-venue.dto';
 
 @Injectable()
 export class VenuesService {
@@ -54,9 +55,19 @@ export class VenuesService {
     return this.venueRepository.find({ where: { ownerId } });
   }
 
-  async update(id: string, partial: Partial<Omit<Venue, 'settings'>> & { settings?: Record<string, unknown> }): Promise<Venue> {
-    await this.venueRepository.update(id, partial as Parameters<typeof this.venueRepository.update>[1]);
-    return this.findById(id);
+  async update(id: string, dto: UpdateVenueDto): Promise<Venue> {
+    const venue = await this.findById(id);
+    const updates: Partial<Venue> = {};
+    if (dto.pricePerSong !== undefined) updates.pricePerSong = dto.pricePerSong;
+    if (dto.discountAmount !== undefined) {
+      const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
+      updates.discountAmount = Math.min(dto.discountAmount, maxPrice);
+    }
+    if (Object.keys(updates).length > 0) {
+      await this.venueRepository.update(id, updates);
+      return this.findById(id);
+    }
+    return venue;
   }
 
   async refreshQrCode(venueId: string): Promise<Venue> {

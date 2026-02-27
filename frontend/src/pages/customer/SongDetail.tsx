@@ -137,7 +137,14 @@ export default function SongDetail() {
                 <span className="text-stone-600 text-sm">Song play</span>
                 <div className="flex items-center gap-1 text-stone-900 font-bold">
                   <IndianRupee className="w-4 h-4 text-brand-600" />
-                  <span className="text-lg">{venue?.pricePerSong ?? 100}</span>
+                  {venue?.discountAmount ? (
+                    <>
+                      <span className="line-through text-stone-400 text-base">{venue.pricePerSong ?? 100}</span>
+                      <span className="text-lg text-brand-600">₹{Math.max(1, (venue.pricePerSong ?? 100) - venue.discountAmount)}</span>
+                    </>
+                  ) : (
+                    <span className="text-lg">₹{venue?.pricePerSong ?? 100}</span>
+                  )}
                 </div>
               </div>
               <p className="text-stone-500 text-xs mb-4">
@@ -150,7 +157,9 @@ export default function SongDetail() {
                 onClick={handleOpenPayment}
               >
                 <IndianRupee className="w-4 h-4" />
-                Pay ₹{venue?.pricePerSong ?? 100} via UPI
+                Pay ₹{venue?.discountAmount
+                  ? Math.max(1, (venue?.pricePerSong ?? 100) - venue.discountAmount)
+                  : (venue?.pricePerSong ?? 100)} via UPI
               </Button>
             </div>
 
@@ -175,7 +184,9 @@ export default function SongDetail() {
         onClose={() => setPaymentOpen(false)}
         onSuccess={handleSuccess}
         songTitle={displaySong?.title}
-        amount={venue?.pricePerSong ?? 100}
+        amount={venue?.discountAmount
+          ? Math.max(1, (venue?.pricePerSong ?? 100) - venue.discountAmount)
+          : (venue?.pricePerSong ?? 100)}
         songId={song?.id ?? songId ?? undefined}
         venueId={venueId}
         onCreateOrder={handleCreateOrder}

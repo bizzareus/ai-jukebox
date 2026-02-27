@@ -24,6 +24,10 @@ export class Venue {
   @Column({ name: 'price_per_song', type: 'int', default: 100 })
   pricePerSong: number;
 
+  /** Flat discount in same currency (₹). Final price = pricePerSong - discountAmount (min 1). */
+  @Column({ name: 'discount_amount', type: 'int', default: 0 })
+  discountAmount: number;
+
   @Column({ name: 'qr_code_url', nullable: true })
   qrCodeUrl: string;
 

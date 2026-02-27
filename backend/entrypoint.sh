@@ -10,11 +10,13 @@ run_migrations() {
     psql "$MIGRATION_URL" -f scripts/init-db.sql 2>/dev/null || true
     psql "$MIGRATION_URL" -f scripts/add-global-playlist-and-super-admin.sql 2>/dev/null || true
     psql "$MIGRATION_URL" -f scripts/add-customer-mobile.sql 2>/dev/null || true
+    psql "$MIGRATION_URL" -f scripts/add-venue-discount.sql 2>/dev/null || true
   else
     [ -z "$DB_PASSWORD" ] && return
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/init-db.sql 2>/dev/null || true
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-global-playlist-and-super-admin.sql 2>/dev/null || true
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-customer-mobile.sql 2>/dev/null || true
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-venue-discount.sql 2>/dev/null || true
   fi
   echo "Migrations finished."
 }

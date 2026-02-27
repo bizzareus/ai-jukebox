@@ -14,8 +14,65 @@ export class SongsService {
     private readonly youtubeService: YoutubeService,
   ) {}
 
+  /**
+   * Search by song name, artist, channel/singer. Searches our DB first (title, artist, channelName),
+   * then YouTube, and merges results (deduped by youtubeVideoId).
+   */
   async search(query: string) {
-    return this.youtubeService.search(query);
+    const q = (query || '').trim();
+    if (!q) return [];
+
+    const seen = new Set<string>();
+    const results: Array<{
+      youtubeVideoId: string;
+      title: string;
+      channelName: string;
+      thumbnailUrl: string;
+      thumbnailHqUrl: string;
+      publishedAt: string;
+    }> = [];
+
+    // 1) Search our DB: title, artist, channelName (full-text style)
+    const term = `%${q.replace(/[%_]/g, (c) => (c === '%' ? '\\%' : '\\_'))}%`;
+    const dbSongs = await this.songRepository
+      .createQueryBuilder('s')
+      .where(
+        'LOWER(s.title) LIKE LOWER(:term) OR LOWER(COALESCE(s.artist, \'\')) LIKE LOWER(:term) OR LOWER(COALESCE(s.channelName, \'\')) LIKE LOWER(:term)',
+        { term },
+      )
+      .orderBy('s.view_count', 'DESC')
+      .take(20)
+      .getMany();
+
+    for (const song of dbSongs) {
+      if (seen.has(song.youtubeVideoId)) continue;
+      seen.add(song.youtubeVideoId);
+      results.push({
+        youtubeVideoId: song.youtubeVideoId,
+        title: song.title,
+        channelName: song.channelName ?? song.artist ?? '',
+        thumbnailUrl: song.thumbnailUrl ?? '',
+        thumbnailHqUrl: song.thumbnailHqUrl ?? song.thumbnailUrl ?? '',
+        publishedAt: song.publishedAt?.toISOString?.() ?? '',
+      });
+    }
+
+    // 2) YouTube search (same query – matches title, description, channel, etc.)
+    const ytResults = await this.youtubeService.search(q, 20);
+    for (const r of ytResults) {
+      if (seen.has(r.youtubeVideoId)) continue;
+      seen.add(r.youtubeVideoId);
+      results.push({
+        youtubeVideoId: r.youtubeVideoId,
+        title: r.title,
+        channelName: r.channelName,
+        thumbnailUrl: r.thumbnailUrl,
+        thumbnailHqUrl: r.thumbnailHqUrl,
+        publishedAt: r.publishedAt,
+      });
+    }
+
+    return results;
   }
 
   /** Fetch full metadata from YouTube and upsert into songs table */

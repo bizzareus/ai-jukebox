@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Music2, ChevronRight } from 'lucide-react';
@@ -43,17 +43,30 @@ export default function VenueHome() {
     enabled: !!venue?.slug,
   });
 
-  const handleSearch = async (q: string) => {
+  const handleSearchInput = (q: string) => {
     setSearchQuery(q);
-    if (!q.trim()) { setSearchResults([]); return; }
-    setSearching(true);
-    try {
-      const results = await api.get<YtSearchResult[]>(`/songs/search?q=${encodeURIComponent(q)}`);
-      setSearchResults(results);
-    } finally {
-      setSearching(false);
-    }
+    if (!q.trim()) setSearchResults([]);
   };
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await api.get<YtSearchResult[]>(`/songs/search?q=${encodeURIComponent(trimmed)}`);
+        setSearchResults(results ?? []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   if (!venue) {
     return (
@@ -75,7 +88,18 @@ export default function VenueHome() {
           <span className="text-brand-600 text-sm font-medium uppercase tracking-wider">Jukebox</span>
         </div>
         <h1 className="font-display text-3xl font-bold text-stone-900">{venue.name}</h1>
-        <p className="text-stone-500 text-sm mt-1">Pick a song, pay ₹{venue.pricePerSong} to queue it</p>
+        <p className="text-stone-500 text-sm mt-1">
+          Pick a song, pay{' '}
+          {venue.discountAmount ? (
+            <>
+              <span className="line-through text-stone-400">₹{venue.pricePerSong}</span>
+              <span className="text-brand-600 font-medium"> ₹{Math.max(1, venue.pricePerSong - venue.discountAmount)}</span>
+            </>
+          ) : (
+            <>₹{venue.pricePerSong}</>
+          )}{' '}
+          to queue it
+        </p>
       </div>
 
       {/* Up next banner */}
@@ -133,9 +157,9 @@ export default function VenueHome() {
       {/* Search */}
       <div className="px-4 mb-6">
         <Input
-          placeholder="Search any song..."
+          placeholder="Search by song name, artist, singer..."
           value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
+          onChange={(e) => handleSearchInput(e.target.value)}
           icon={<Search className="w-4 h-4" />}
         />
       </div>

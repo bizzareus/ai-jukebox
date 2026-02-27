@@ -15,6 +15,8 @@ import Library from './pages/admin/Library';
 import Analytics from './pages/admin/Analytics';
 import SuperAdminVenues from './pages/admin/SuperAdminVenues';
 import SuperAdminGlobalLibrary from './pages/admin/SuperAdminGlobalLibrary';
+import Settings from './pages/admin/Settings';
+import Landing from './pages/Landing';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,11 +49,12 @@ export default function App() {
             <Route path="dj" element={<DjMode />} />
             <Route path="library" element={<Library />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="venues" element={<SuperAdminVenues />} />
             <Route path="global-library" element={<SuperAdminGlobalLibrary />} />
           </Route>
 
-          <Route path="/" element={<Navigate to="/admin/login" replace />} />
+          <Route path="/" element={<Landing />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

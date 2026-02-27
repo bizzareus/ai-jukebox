@@ -15,9 +15,9 @@ function formatEta(seconds: number): string {
 
 function SubmitterBadge({ name }: { name: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-stone-400">
-      <div className="w-5 h-5 rounded-full bg-violet-500/80 flex items-center justify-center flex-shrink-0">
-        <User className="w-2.5 h-2.5 text-white" />
+    <div className="flex items-center gap-1.5 text-stone-500">
+      <div className="w-5 h-5 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+        <User className="w-2.5 h-2.5 text-brand-600" />
       </div>
       <span className="text-xs truncate">{name}</span>
     </div>
@@ -48,20 +48,20 @@ export default function QueueView() {
   const isNowPlayingMySong = nowPlaying && myItem?.id === nowPlaying.id;
 
   return (
-    <div className="min-h-screen bg-stone-900 text-white">
+    <div className="min-h-screen bg-surface">
       {/* Header: back + menu */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-10 pb-2 bg-stone-900/95 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-10 pb-2 bg-surface/95 backdrop-blur-sm border-b border-surface-border">
         <button
           type="button"
           onClick={() => navigate(`/${slug}`)}
-          className="p-2 -ml-2 rounded-full text-white/90 hover:bg-white/10 transition-colors"
+          className="p-2 -ml-2 rounded-full bg-white/90 backdrop-blur-sm text-stone-900 shadow-sm hover:bg-stone-50 transition-colors"
           aria-label="Back"
         >
           <ChevronDown className="w-6 h-6 rotate-90" />
         </button>
         <button
           type="button"
-          className="p-2 rounded-full text-white/90 hover:bg-white/10 transition-colors"
+          className="p-2 rounded-full text-stone-600 hover:bg-stone-100 transition-colors"
           aria-label="Menu"
         >
           <MoreVertical className="w-5 h-5" />
@@ -70,7 +70,7 @@ export default function QueueView() {
 
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <>
@@ -78,7 +78,7 @@ export default function QueueView() {
           {nowPlaying && (
             <div className="px-4 pb-6">
               <div className="max-w-sm mx-auto">
-                <div className="aspect-square w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-stone-800 shadow-xl">
+                <div className="aspect-square w-full max-w-[280px] mx-auto rounded-2xl overflow-hidden bg-stone-100 shadow-lg border border-surface-border">
                   {nowPlaying.song.thumbnailHqUrl || nowPlaying.song.thumbnailUrl ? (
                     <img
                       src={nowPlaying.song.thumbnailHqUrl || nowPlaying.song.thumbnailUrl}
@@ -87,24 +87,24 @@ export default function QueueView() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Music2 className="w-16 h-16 text-stone-600" />
+                      <Music2 className="w-16 h-16 text-stone-400" />
                     </div>
                   )}
                 </div>
                 <div className="mt-4 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h1 className="text-xl font-bold text-amber-400 truncate">
+                      <h1 className="text-xl font-bold text-stone-900 truncate">
                         {nowPlaying.song.title}
                       </h1>
                       {isNowPlayingMySong && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-400 text-xs font-medium shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs font-medium shrink-0">
                           <Zap className="w-3 h-3" />
                           Your song
                         </span>
                       )}
                     </div>
-                    <p className="text-stone-400 text-sm mt-0.5 truncate">
+                    <p className="text-stone-500 text-sm mt-0.5 truncate">
                       {nowPlaying.song.artist ?? nowPlaying.song.channelName}
                     </p>
                     <div className="mt-2">
@@ -115,7 +115,7 @@ export default function QueueView() {
                   </div>
                   <button
                     type="button"
-                    className="w-10 h-10 rounded-full border border-white/30 flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors shrink-0"
+                    className="w-10 h-10 rounded-full border border-surface-border flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors shrink-0"
                     aria-label="Add to playlist"
                   >
                     <Plus className="w-5 h-5" />
@@ -126,9 +126,9 @@ export default function QueueView() {
           )}
 
           {/* Queue list */}
-          <div className="bg-stone-800/50 rounded-t-3xl pt-5 pb-8 min-h-[40vh]">
+          <div className="bg-surface-card border-t border-surface-border rounded-t-2xl pt-5 pb-8 min-h-[40vh] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]">
             <div className="px-4 mb-3">
-              <h2 className="text-stone-400 text-xs font-semibold uppercase tracking-wider">
+              <h2 className="text-stone-500 text-xs font-semibold uppercase tracking-wider">
                 Up next
                 {pending.length > 0 && ` · ${pending.length} song${pending.length !== 1 ? 's' : ''}`}
               </h2>
@@ -140,12 +140,12 @@ export default function QueueView() {
                   return (
                     <div
                       key={item.id}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50/80 transition-colors"
                     >
                       <span className="text-stone-500 text-sm w-6 text-center shrink-0">
                         {index + 1}
                       </span>
-                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-stone-700">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-stone-100">
                         {item.song.thumbnailUrl ? (
                           <img
                             src={item.song.thumbnailUrl}
@@ -154,17 +154,17 @@ export default function QueueView() {
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
-                            <Music2 className="w-5 h-5 text-stone-500" />
+                            <Music2 className="w-5 h-5 text-stone-400" />
                           </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-white text-sm font-medium truncate">
+                          <p className="text-stone-900 text-sm font-medium truncate">
                             {item.song.title}
                           </p>
                           {isMyItem && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-500/30 text-violet-300 text-xs font-medium shrink-0">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs font-medium shrink-0">
                               <Zap className="w-2.5 h-2.5" />
                               Your song
                             </span>
@@ -180,12 +180,12 @@ export default function QueueView() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <div className="w-8 h-8 rounded-full border border-amber-500/50 flex items-center justify-center text-amber-400">
+                        <div className="w-8 h-8 rounded-full border border-brand-200 flex items-center justify-center text-brand-600">
                           <Zap className="w-3.5 h-3.5" />
                         </div>
                         <button
                           type="button"
-                          className="p-2 text-stone-400 hover:text-white transition-colors"
+                          className="p-2 text-stone-400 hover:text-stone-700 transition-colors"
                           aria-label="Options"
                         >
                           <MoreVertical className="w-4 h-4" />
@@ -198,12 +198,12 @@ export default function QueueView() {
             ) : !nowPlaying ? (
               <div className="text-center py-16 text-stone-500">
                 <Music2 className="w-14 h-14 mx-auto mb-4 opacity-40" />
-                <p className="font-medium text-white/80">Queue is empty</p>
+                <p className="font-medium text-stone-700">Queue is empty</p>
                 <p className="text-sm mt-1">Be the first to queue a song!</p>
                 <button
                   type="button"
                   onClick={() => navigate(`/${slug}`)}
-                  className="mt-4 text-amber-400 text-sm font-medium hover:underline"
+                  className="mt-4 text-brand-600 text-sm font-medium hover:underline"
                 >
                   Pick a song
                 </button>

@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe } from 'lucide-react';
+import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { authService } from '../../services/auth';
 
@@ -8,6 +8,7 @@ const venueAdminNav = [
   { to: '/admin/dj', icon: Music2, label: 'DJ Mode' },
   { to: '/admin/library', icon: Library, label: 'Library' },
   { to: '/admin/analytics', icon: BarChart2, label: 'Analytics' },
+  { to: '/admin/settings', icon: Settings, label: 'Settings' },
 ];
 
 const superAdminNav = [

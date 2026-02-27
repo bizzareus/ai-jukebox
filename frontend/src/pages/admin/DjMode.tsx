@@ -147,7 +147,7 @@ export default function DjMode() {
       }
     };
 
-    const endEarly = (p: YTPlayer) => {
+    const endEarly = (player: YTPlayer) => {
       if (fadeStartedRef.current) return;
       fadeStartedRef.current = true;
       clearAll();
@@ -158,8 +158,6 @@ export default function DjMode() {
       let step = 0;
 
       fadeIntervalRef.current = setInterval(() => {
-        const player = playerRef.current;
-        if (!player) return;
         step += 1;
         const vol = Math.max(0, Math.round(100 - step * volumeStep));
         player.setVolume(vol);

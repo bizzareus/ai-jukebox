@@ -20,6 +20,8 @@ export interface Venue {
   name: string;
   upiVpa: string;
   pricePerSong: number;
+  /** Flat discount in ₹. Final price = pricePerSong - discountAmount (min 1). */
+  discountAmount?: number;
   qrCodeUrl?: string;
 }
 

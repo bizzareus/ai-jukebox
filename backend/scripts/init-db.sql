@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS venues (
   name VARCHAR(255) NOT NULL,
   upi_vpa VARCHAR(255) NOT NULL,
   price_per_song INT NOT NULL DEFAULT 100,
+  discount_amount INT NOT NULL DEFAULT 0,
   qr_code_url TEXT,
   owner_id UUID NOT NULL,
   settings_json JSONB NOT NULL DEFAULT '{}',

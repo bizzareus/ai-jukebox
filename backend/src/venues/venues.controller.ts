@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { UpdateVenueDto } from './dto/update-venue.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
@@ -26,6 +27,14 @@ export class VenuesController {
   @UseGuards(JwtAuthGuard)
   mine(@CurrentAdmin() admin: Admin) {
     return this.venuesService.findByOwner(admin.id);
+  }
+
+  /** Venue admin: get the venue they manage (by admin.venueId). */
+  @Get('current')
+  @UseGuards(JwtAuthGuard)
+  async current(@CurrentAdmin() admin: Admin) {
+    if (!admin.venueId) throw new ForbiddenException('No venue assigned');
+    return this.venuesService.findById(admin.venueId);
   }
 
   @Get(':slug/songs/popular')
@@ -55,7 +64,15 @@ export class VenuesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  update(@Param('id') id: string, @Body() body: Partial<Admin>) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateVenueDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    const isSuperAdmin = admin.role === 'super_admin';
+    if (!isSuperAdmin && admin.venueId !== id) {
+      throw new ForbiddenException('You can only update your own venue');
+    }
     return this.venuesService.update(id, body);
   }
 }

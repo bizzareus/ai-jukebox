@@ -124,7 +124,14 @@ export default function PlaylistView() {
               </div>
               <div className="flex items-center gap-1 text-brand-600 flex-shrink-0">
                 <IndianRupee className="w-3.5 h-3.5" />
-                <span className="text-sm font-semibold">{venue?.pricePerSong ?? 100}</span>
+                {venue?.discountAmount ? (
+                  <>
+                    <span className="line-through text-stone-400 text-xs">{venue.pricePerSong ?? 100}</span>
+                    <span className="text-sm font-semibold">{Math.max(1, (venue?.pricePerSong ?? 100) - venue.discountAmount)}</span>
+                  </>
+                ) : (
+                  <span className="text-sm font-semibold">{venue?.pricePerSong ?? 100}</span>
+                )}
               </div>
             </button>
           ))

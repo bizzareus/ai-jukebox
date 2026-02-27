@@ -1,13 +1,12 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { SongsService } from './songs.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('songs')
 export class SongsController {
   constructor(private readonly songsService: SongsService) {}
 
+  /** Public: search by song name, artist, channel (DB + YouTube). Used by customer venue home. */
   @Get('search')
-  @UseGuards(JwtAuthGuard)
   search(@Query('q') query: string) {
     return this.songsService.search(query);
   }

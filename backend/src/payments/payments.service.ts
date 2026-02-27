@@ -37,11 +37,18 @@ export class PaymentsService {
     });
   }
 
+  /** Effective price after flat discount (min 1). */
+  private effectivePrice(venue: { pricePerSong: number; discountAmount?: number }): number {
+    const discount = venue.discountAmount ?? 0;
+    return Math.max(1, venue.pricePerSong - discount);
+  }
+
   async createOrder(dto: CreateOrderDto) {
     const venue = await this.venuesService.findById(dto.venueId);
     const song = await this.songsService.findById(dto.songId);
 
-    const amountPaise = venue.pricePerSong * 100;
+    const effective = this.effectivePrice(venue);
+    const amountPaise = effective * 100;
 
     const order = await this.razorpay.orders.create({
       amount: amountPaise,
@@ -62,7 +69,7 @@ export class PaymentsService {
       customerName: dto.customerName,
       customerMobile: dto.customerMobile,
       razorpayOrderId: order.id,
-      amount: venue.pricePerSong,
+      amount: effective,
       status: PaymentStatus.CREATED,
     });
 
@@ -71,7 +78,7 @@ export class PaymentsService {
     const upiString = this.buildUpiString(
       venue.upiVpa,
       venue.name,
-      venue.pricePerSong,
+      effective,
       song.title,
       order.id,
     );
@@ -85,7 +92,7 @@ export class PaymentsService {
     return {
       orderId: order.id,
       paymentId: payment.id,
-      amount: venue.pricePerSong,
+      amount: effective,
       upiString,
       testMode,
       /** Only set in test mode; required to open Razorpay Checkout for simulating UPI (success@razorpay) */
