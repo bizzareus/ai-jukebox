@@ -57,7 +57,7 @@ export class VenuesService {
 
   async update(id: string, dto: UpdateVenueDto): Promise<Venue> {
     const venue = await this.findById(id);
-    const updates: Partial<Venue> = {};
+    const updates: { pricePerSong?: number; discountAmount?: number } = {};
     if (dto.pricePerSong !== undefined) updates.pricePerSong = dto.pricePerSong;
     if (dto.discountAmount !== undefined) {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
@@ -73,7 +73,8 @@ export class VenuesService {
   async refreshQrCode(venueId: string): Promise<Venue> {
     const venue = await this.findById(venueId);
     const qrCodeUrl = await this.generateQrCode(venue.slug);
-    return this.update(venueId, { qrCodeUrl });
+    await this.venueRepository.update(venueId, { qrCodeUrl });
+    return this.findById(venueId);
   }
 
   private async generateQrCode(slug: string): Promise<string> {
