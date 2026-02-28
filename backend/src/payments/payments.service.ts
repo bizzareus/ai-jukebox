@@ -95,6 +95,20 @@ export class PaymentsService {
 
     await this.paymentRepository.save(payment);
 
+    // Fetch QR to get image_content (UPI string) so frontend can draw its own QR and "Open UPI App" link
+    let upiString = '';
+    try {
+      const fetched = await this.razorpay.qrCode.fetch(qr.id);
+      const qrWithContent = fetched as { image_content?: string };
+      if (qrWithContent.image_content) {
+        upiString = qrWithContent.image_content;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch QR image_content for ${qr.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     this.logger.log(
       `Created QR ${qr.id} for song "${song.title}" at venue ${venue.name}`,
     );
@@ -103,8 +117,8 @@ export class PaymentsService {
       orderId: payment.id,
       paymentId: payment.id,
       amount: effective,
-      upiString: '',
-      qrImageUrl: qr.image_url,
+      upiString,
+      qrImageUrl: upiString ? undefined : qr.image_url,
       song: { id: song.id, title: song.title, thumbnailUrl: song.thumbnailUrl },
       venue: { id: venue.id, name: venue.name },
     };

@@ -119,8 +119,7 @@ export function UpiPaymentSheet({
 
     setStatus('waiting');
     setConfirmedPayload(null);
-    // Only draw QR from UPI string when not using Razorpay QR image
-    if (!order.qrImageUrl && order.upiString && canvasRef.current) {
+    if (order.upiString && canvasRef.current) {
       QRCode.toCanvas(canvasRef.current, order.upiString, {
         width: 220,
         margin: 1,
@@ -273,45 +272,51 @@ export function UpiPaymentSheet({
                 </div>
               </div>
             </div>
-            {order.qrImageUrl ? (
-              <div className="rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white">
-                <img
-                  src={order.qrImageUrl}
-                  alt="Scan to pay with UPI"
-                  className="rounded-xl block w-full max-w-[220px] h-auto mx-auto"
-                />
-              </div>
-            ) : (
-              <a
-                href={order.upiString}
-                className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors"
-                onClick={(e) => {
-                  window.location.href = order.upiString;
-                  e.preventDefault();
-                }}
-                aria-label="Open UPI app to pay"
-              >
-                <canvas ref={canvasRef} className="rounded-xl block" />
-              </a>
-            )}
-            <p className="text-stone-500 text-sm text-center">
-              {order.qrImageUrl
-                ? 'Scan the QR code with your UPI app to pay'
-                : 'Tap the QR code to open your UPI app'}
-            </p>
             {order.upiString ? (
-              <a
-                href={order.upiString}
-                className="w-full"
-                onClick={(e) => {
-                  window.location.href = order.upiString;
-                  e.preventDefault();
-                }}
-              >
-                <Button variant="primary" size="lg" className="w-full">
-                  Open UPI App
-                </Button>
-              </a>
+              <>
+                <a
+                  href={order.upiString}
+                  className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors w-fit mx-auto"
+                  onClick={(e) => {
+                    window.location.href = order.upiString!;
+                    e.preventDefault();
+                  }}
+                  aria-label="Open UPI app to pay"
+                >
+                  <canvas ref={canvasRef} className="rounded-xl block" />
+                </a>
+                <p className="text-stone-500 text-sm text-center">
+                  Scan the QR code or tap to open your UPI app
+                </p>
+                <a
+                  href={order.upiString}
+                  className="w-full"
+                  onClick={(e) => {
+                    window.location.href = order.upiString!;
+                    e.preventDefault();
+                  }}
+                >
+                  <Button variant="primary" size="lg" className="w-full">
+                    Pay with UPI
+                  </Button>
+                </a>
+              </>
+            ) : order.qrImageUrl ? (
+              <>
+                <p className="text-stone-500 text-sm text-center">
+                  Open the link below to pay with your UPI app
+                </p>
+                <a
+                  href={order.qrImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full"
+                >
+                  <Button variant="primary" size="lg" className="w-full">
+                    Pay with UPI
+                  </Button>
+                </a>
+              </>
             ) : null}
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />
