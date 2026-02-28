@@ -31,9 +31,12 @@ export default function AdminLayout() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-white shadow-sm">
         <div className="flex items-center gap-2">
-          <Music2 className="w-5 h-5 text-brand-600" />
-          <span className="font-display font-semibold text-stone-900">Jukebox</span>
-          <span className="text-stone-500 text-sm">{isSuperAdmin ? 'Super Admin' : 'Admin'}</span>
+          <Music2 className="w-5 h-5 text-brand-600 flex-shrink-0" />
+          <div className="flex flex-col leading-tight">
+            <span className="font-display font-semibold text-stone-900">MuzoBox</span>
+            <span className="text-stone-500 text-xs">your bar jukebox</span>
+          </div>
+          <span className="text-stone-500 text-sm ml-1">{isSuperAdmin ? 'Super Admin' : 'Admin'}</span>
         </div>
         <button
           type="button"

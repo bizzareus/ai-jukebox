@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { NowPlayingBar } from '../../components/NowPlayingBar';
+import CustomerOnboarding from '../../components/CustomerOnboarding';
 import { useQueue } from '../../hooks/useQueue';
 import { QueueItemStatus } from '../../types';
 import type { Venue, Playlist, YtSearchResult, QueueItem, Song } from '../../types';
@@ -81,11 +82,15 @@ export default function VenueHome() {
 
   return (
     <div className="min-h-screen bg-surface pb-24">
+      <CustomerOnboarding />
       {/* Header */}
       <div className="px-4 pt-10 pb-6">
         <div className="flex items-center gap-2 mb-1">
           <Music2 className="w-5 h-5 text-brand-600" />
-          <span className="text-brand-600 text-sm font-medium uppercase tracking-wider">Jukebox</span>
+          <div className="flex flex-col leading-tight">
+            <span className="text-brand-600 font-semibold text-sm">MuzoBox</span>
+            <span className="text-stone-500 text-xs">your bar jukebox</span>
+          </div>
         </div>
         <h1 className="font-display text-3xl font-bold text-stone-900">{venue.name}</h1>
         <p className="text-stone-500 text-sm mt-1">

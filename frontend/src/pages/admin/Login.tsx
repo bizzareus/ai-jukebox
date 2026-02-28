@@ -33,8 +33,9 @@ export default function AdminLogin() {
           <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-50 rounded-2xl mb-4 border border-brand-200">
             <Music2 className="w-7 h-7 text-brand-600" />
           </div>
-          <h1 className="font-display text-2xl font-bold text-stone-900">Jukebox Admin</h1>
-          <p className="text-stone-500 text-sm mt-1">Sign in to manage your venue</p>
+          <h1 className="font-display text-2xl font-bold text-stone-900">MuzoBox</h1>
+          <p className="text-stone-500 text-sm mt-0.5">your bar jukebox</p>
+          <p className="text-stone-500 text-sm mt-2">Sign in to manage your venue</p>
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">

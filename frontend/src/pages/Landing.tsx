@@ -12,8 +12,9 @@ export default function Landing() {
             <Music2 className="w-7 h-7" />
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
-            Jukebox for your bar
+            MuzoBox
           </h1>
+          <p className="text-brand-600 font-medium mt-1">your bar jukebox</p>
           <p className="mt-4 text-lg text-stone-600">
             Let customers pick the music, pay to queue songs, and keep the vibe going. Earn revenue and engage your crowd with MuzoBox.
           </p>
