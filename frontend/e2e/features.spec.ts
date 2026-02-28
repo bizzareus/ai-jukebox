@@ -14,8 +14,7 @@ test.describe('QR Code, Notifications, GTM features', () => {
     await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible();
 
     expect(await page.getByText('QR Code').isVisible()).toBe(true);
-    expect(await page.getByText('Download QR').isVisible()).toBe(true);
-    expect(await page.getByText('Print poster').isVisible()).toBe(true);
+    expect(await page.getByText('Generate poster').isVisible()).toBe(true);
     expect(await page.getByText('Enable push notifications').isVisible()).toBe(true);
     expect(await page.getByText('Branding').isVisible()).toBe(true);
     expect(await page.getByLabel(/logo url/i).isVisible()).toBe(true);

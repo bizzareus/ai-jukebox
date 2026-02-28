@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Rocket, MapPin, Mail, Phone, Globe, Loader2, CheckCircle } from 'lucide-react';
+import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
