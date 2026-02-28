@@ -387,4 +387,28 @@ export class QueueService {
     const eta = this.calculateEta(queue, item.id);
     return { id: item.id, position: item.position, eta };
   }
+
+  /** Last N distinct customers for a venue (from queue_items). Super admin only. */
+  async getRecentCustomers(
+    venueId: string,
+    limit: number = 50,
+  ): Promise<{ customerName: string | null; customerMobile: string | null; lastSeen: string }[]> {
+    const rows = await this.queueRepository
+      .createQueryBuilder('q')
+      .select('q.customer_name', 'customerName')
+      .addSelect('q.customer_mobile', 'customerMobile')
+      .addSelect('MAX(q.queued_at)', 'lastSeen')
+      .where('q.venue_id = :venueId', { venueId })
+      .andWhere('(q.customer_name IS NOT NULL OR q.customer_mobile IS NOT NULL)')
+      .groupBy('q.customer_name')
+      .addGroupBy('q.customer_mobile')
+      .orderBy('lastSeen', 'DESC')
+      .limit(limit)
+      .getRawMany();
+    return rows.map((r) => ({
+      customerName: r.customerName ?? null,
+      customerMobile: r.customerMobile ?? null,
+      lastSeen: r.lastSeen instanceof Date ? r.lastSeen.toISOString() : String(r.lastSeen),
+    }));
+  }
 }

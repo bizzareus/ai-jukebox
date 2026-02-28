@@ -1,9 +1,11 @@
 FROM node:20-alpine AS builder
+# Pass at build time so Vite bakes it in (e.g. Railway Variables or docker build --build-arg VITE_API_URL=...)
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# VITE_API_URL is not needed - we proxy via nginx
 RUN npm run build
 
 FROM nginx:alpine AS runner

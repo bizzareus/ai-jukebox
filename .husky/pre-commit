@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# ESLint 9 requires Node 16+ (Object.hasOwn). Skip lint on older Node to allow commit.
+MAJOR=$(node -p "process.versions.node.split('.')[0]")
+if [ "$MAJOR" -lt 16 ]; then
+  echo "husky: Node $MAJOR detected; lint requires Node 16+. Skipping pre-commit lint."
+  exit 0
+fi
+
+npm run lint

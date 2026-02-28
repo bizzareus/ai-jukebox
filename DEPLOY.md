@@ -48,7 +48,8 @@ DB migrations (schema + super admin) run automatically on startup via `entrypoin
 
   | Variable | Value |
   |----------|--------|
-  | `BACKEND_URL` | Backend Railway URL from step 3 (e.g. `https://xxx.up.railway.app`) |
+  | `BACKEND_URL` | Backend URL for nginx proxy (e.g. `https://backend.up.railway.app`) — used at runtime by entrypoint. |
+  | `VITE_API_URL` | Backend URL (e.g. `https://ai-jukebox-backend-production.up.railway.app`) — **baked in at build time** so the frontend calls the backend directly. Set this if frontend and backend are on different domains (e.g. custom domain muzobox.com). After adding or changing it, **redeploy** to trigger a new build. |
 
 - **Settings** → **Networking** → **Generate Domain**. Note the frontend URL.
 
