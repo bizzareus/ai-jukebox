@@ -49,8 +49,8 @@ export default function QueueView() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Header: back + menu */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-10 pb-2 bg-surface/95 backdrop-blur-sm border-b border-surface-border">
+      {/* Header: back + menu — safe-top clears mobile browser address bar */}
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pb-2 bg-surface/95 backdrop-blur-sm border-b border-surface-border safe-top">
         <button
           type="button"
           onClick={() => navigate(`/${slug}`)}

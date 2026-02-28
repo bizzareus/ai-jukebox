@@ -57,3 +57,8 @@ html, body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Clear mobile browser address bar; use on sticky/fixed top headers */
+.safe-top {
+  padding-top: max(3.5rem, calc(env(safe-area-inset-top, 0px) + 2.5rem));
+}
