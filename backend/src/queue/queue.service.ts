@@ -2,7 +2,9 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { QueueItem, QueueItemStatus } from './queue-item.entity';
+import { QueueItemVote } from './queue-item-vote.entity';
 import { Payment, PaymentStatus } from '../payments/payment.entity';
+import { Venue } from '../venues/venue.entity';
 import { QueueGateway } from './queue.gateway';
 import { PlaylistsService } from '../playlists/playlists.service';
 import { SongsService } from '../songs/songs.service';
@@ -18,8 +20,12 @@ export class QueueService {
   constructor(
     @InjectRepository(QueueItem)
     private readonly queueRepository: Repository<QueueItem>,
+    @InjectRepository(QueueItemVote)
+    private readonly voteRepository: Repository<QueueItemVote>,
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
+    @InjectRepository(Venue)
+    private readonly venueRepository: Repository<Venue>,
     private readonly queueGateway: QueueGateway,
     private readonly playlistsService: PlaylistsService,
     private readonly songsService: SongsService,
@@ -47,6 +53,7 @@ export class QueueService {
       paymentId: payment.id,
       customerName: payment.customerName,
       customerMobile: payment.customerMobile,
+      dedicationMessage: payment.dedicationMessage ?? undefined,
       status: QueueItemStatus.PENDING,
       position,
     });
@@ -80,7 +87,16 @@ export class QueueService {
   }
 
   async getVenueQueue(venueId: string): Promise<QueueItem[]> {
-    return this.queueRepository.find({
+    const venue = await this.venueRepository.findOne({
+      where: { id: venueId },
+      select: ['id', 'settings'],
+    });
+    const democraticMode =
+      !!venue?.settings &&
+      typeof venue.settings === 'object' &&
+      venue.settings.democraticMode === true;
+
+    const items = await this.queueRepository.find({
       where: {
         venueId,
         status: In([QueueItemStatus.PENDING, QueueItemStatus.PLAYING]),
@@ -88,6 +104,17 @@ export class QueueService {
       relations: ['song'],
       order: { position: 'ASC' },
     });
+
+    if (!democraticMode) return items;
+
+    const playing = items.filter((i) => i.status === QueueItemStatus.PLAYING);
+    const pending = items.filter((i) => i.status === QueueItemStatus.PENDING);
+    pending.sort((a, b) => {
+      const voteDiff = (b.voteCount ?? 0) - (a.voteCount ?? 0);
+      if (voteDiff !== 0) return voteDiff;
+      return a.position - b.position;
+    });
+    return [...playing, ...pending];
   }
 
   async getNowPlaying(venueId: string): Promise<QueueItem | null> {
@@ -394,6 +421,42 @@ export class QueueService {
         playCount: parseInt(r.playCount, 10),
       }))
       .filter((x): x is { song: Song; playCount: number } => !!x.song);
+  }
+
+  /** Upvote a pending queue item (one vote per session per item). */
+  async upvote(itemId: string, sessionId: string): Promise<QueueItem> {
+    const item = await this.queueRepository.findOne({
+      where: { id: itemId, status: QueueItemStatus.PENDING },
+      relations: ['song'],
+    });
+    if (!item)
+      throw new NotFoundException('Queue item not found or not pending');
+
+    const existing = await this.voteRepository.findOne({
+      where: { queueItemId: itemId, sessionId },
+    });
+    if (existing) {
+      const queue = await this.getVenueQueue(item.venueId);
+      this.queueGateway.emitQueueUpdated(item.venueId, queue);
+      return item;
+    }
+
+    await this.voteRepository.save(
+      this.voteRepository.create({ queueItemId: itemId, sessionId }),
+    );
+    await this.queueRepository.increment({ id: itemId }, 'voteCount', 1);
+    const updated = await this.queueRepository.findOne({
+      where: { id: itemId },
+      relations: ['song'],
+    });
+    if (!updated) throw new NotFoundException('Queue item not found');
+
+    const queue = await this.getVenueQueue(item.venueId);
+    this.queueGateway.emitQueueUpdated(item.venueId, queue);
+    this.logger.log(
+      `Upvote for item ${itemId} by session ${sessionId.slice(0, 8)}...`,
+    );
+    return updated;
   }
 
   /** For order-status API: get queue item and ETA by payment id (when payment is paid). */

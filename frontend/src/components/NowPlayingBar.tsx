@@ -1,20 +1,37 @@
-import { Music, ListMusic } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Music, ListMusic, Flame, Heart, Hand } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { QueueItem } from '../types';
 import { QueueItemStatus } from '../types';
+import { useReactions } from '../hooks/useReactions';
+import type { ReactionEmoji } from '../hooks/useReactions';
 
 interface NowPlayingBarProps {
   queue: QueueItem[];
+  venueId?: string;
 }
 
-export function NowPlayingBar({ queue }: NowPlayingBarProps) {
+const REACTION_ANIMATION_MS = 500;
+
+export function NowPlayingBar({ queue, venueId }: NowPlayingBarProps) {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
+  const { counts, sendReaction } = useReactions(venueId);
+  const [reactionAnimating, setReactionAnimating] = useState<ReactionEmoji | null>(null);
+
+  const handleReaction = useCallback((emoji: ReactionEmoji) => {
+    sendReaction(emoji);
+    setReactionAnimating(emoji);
+    setTimeout(() => setReactionAnimating(null), REACTION_ANIMATION_MS);
+  }, [sendReaction]);
+
   const nowPlaying = queue.find((i) => i.status === QueueItemStatus.PLAYING);
   const next = queue.find((i) => i.status === QueueItemStatus.PENDING);
   const current = nowPlaying ?? next;
 
   if (!current) return null;
+
+  const totalReactions = counts.fire + counts.heart + counts.clap;
 
   return (
     <div
@@ -36,8 +53,64 @@ export function NowPlayingBar({ queue }: NowPlayingBarProps) {
           <p className="text-stone-500 text-xs">
             {nowPlaying ? 'Now Playing' : `Up next • ${queue.filter(i => i.status === QueueItemStatus.PENDING).length} in queue`}
           </p>
+          {nowPlaying && venueId && totalReactions > 0 && (
+            <div className="flex items-center gap-3 mt-1 text-stone-500">
+              {counts.fire > 0 && (
+                <span className="flex items-center gap-0.5 text-xs">
+                  <Flame className="w-3.5 h-3.5 text-orange-500" /> {counts.fire}
+                </span>
+              )}
+              {counts.heart > 0 && (
+                <span className="flex items-center gap-0.5 text-xs">
+                  <Heart className="w-3.5 h-3.5 text-rose-500" /> {counts.heart}
+                </span>
+              )}
+              {counts.clap > 0 && (
+                <span className="flex items-center gap-0.5 text-xs">
+                  <Hand className="w-3.5 h-3.5" /> {counts.clap}
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        {nowPlaying && (
+        {nowPlaying && venueId && (
+          <div
+            className="flex items-center gap-1 flex-shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Fire reaction"
+              className="p-1.5 rounded-full hover:bg-orange-100 text-stone-400 hover:text-orange-500 transition-colors active:scale-95"
+              onClick={(e) => { e.stopPropagation(); handleReaction('fire'); }}
+            >
+              <Flame
+                className={`w-4 h-4 ${reactionAnimating === 'fire' ? 'animate-upvote-pop text-orange-500' : ''}`}
+              />
+            </button>
+            <button
+              type="button"
+              aria-label="Heart reaction"
+              className="p-1.5 rounded-full hover:bg-rose-100 text-stone-400 hover:text-rose-500 transition-colors active:scale-95"
+              onClick={(e) => { e.stopPropagation(); handleReaction('heart'); }}
+            >
+              <Heart
+                className={`w-4 h-4 ${reactionAnimating === 'heart' ? 'animate-upvote-pop text-rose-500' : ''}`}
+              />
+            </button>
+            <button
+              type="button"
+              aria-label="Clap reaction"
+              className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors active:scale-95"
+              onClick={(e) => { e.stopPropagation(); handleReaction('clap'); }}
+            >
+              <Hand
+                className={`w-4 h-4 ${reactionAnimating === 'clap' ? 'animate-upvote-pop text-stone-600' : ''}`}
+              />
+            </button>
+          </div>
+        )}
+        {nowPlaying && !venueId && (
           <div className="flex items-end gap-[3px] h-4">
             {[1, 2, 3].map((i) => (
               <div
@@ -48,7 +121,7 @@ export function NowPlayingBar({ queue }: NowPlayingBarProps) {
             ))}
           </div>
         )}
-        <ListMusic className="w-5 h-5 text-stone-400 flex-shrink-0" />
+        {!nowPlaying && <ListMusic className="w-5 h-5 text-stone-400 flex-shrink-0" />}
       </div>
     </div>
   );

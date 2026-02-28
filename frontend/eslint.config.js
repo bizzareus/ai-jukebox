@@ -20,4 +20,11 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['**/sw.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: { ...globals.browser, self: 'readonly' },
+    },
+  },
 ])

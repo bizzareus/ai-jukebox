@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SkipForward, Music2, Play, ListMusic } from 'lucide-react';
+import { SkipForward, Music2, Play, ListMusic, Flame, Heart, Hand, ThumbsUp } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useQueue } from '../../hooks/useQueue';
+import { useReactions } from '../../hooks/useReactions';
 import { authService } from '../../services/auth';
 import { QueueItemStatus, type QueueItem } from '../../types';
 
@@ -52,6 +53,7 @@ export default function DjMode() {
 
   const queryClient = useQueryClient();
   const { data: queue = [] } = useQueue(venueId);
+  const { counts } = useReactions(venueId);
   const { data: recentPlays = [] } = useQuery({
     queryKey: ['recent-plays', venueId],
     queryFn: () => api.get<QueueItem[]>(`/queue/${venueId}/recent-plays?limit=10`),
@@ -128,7 +130,7 @@ export default function DjMode() {
         },
       });
     }
-  }, [ytReady, nowPlaying?.song?.youtubeVideoId, handleAdvance]);
+  }, [ytReady, nowPlaying, nowPlaying?.song?.youtubeVideoId, autoAdvance, handleAdvance]);
 
   // End video 20–30s before actual end: check every second, then short fade and stop (inspiration: stopVideo when duration - current <= 20)
   useEffect(() => {
@@ -184,7 +186,7 @@ export default function DjMode() {
     return () => {
       clearAll();
     };
-  }, [nowPlaying?.id, autoAdvance, handleAdvance]);
+  }, [nowPlaying, autoAdvance, handleAdvance]);
 
   const handleStartFirst = async () => {
     const first = pending[0];
@@ -252,10 +254,20 @@ export default function DjMode() {
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-stone-900 font-semibold truncate">{nowPlaying.song.title}</p>
+            {nowPlaying.dedicationMessage && (
+              <p className="text-stone-600 text-sm italic mt-0.5">&ldquo;{nowPlaying.dedicationMessage}&rdquo;</p>
+            )}
             {nowPlaying.customerName && (
               <p className="text-brand-400 text-xs">
                 {nowPlaying.customerName === 'System' ? 'Played by system' : `Requested by ${nowPlaying.customerName}`}
               </p>
+            )}
+            {(counts.fire > 0 || counts.heart > 0 || counts.clap > 0) && (
+              <div className="flex items-center gap-3 mt-2 text-stone-500 text-xs">
+                {counts.fire > 0 && <span className="flex items-center gap-1"><Flame className="w-3.5 h-3.5 text-orange-500" /> {counts.fire}</span>}
+                {counts.heart > 0 && <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-rose-500" /> {counts.heart}</span>}
+                {counts.clap > 0 && <span className="flex items-center gap-1"><Hand className="w-3.5 h-3.5" /> {counts.clap}</span>}
+              </div>
             )}
           </div>
           <Button onClick={handleAdvance} loading={advancing} variant="outline" size="sm">
@@ -280,11 +292,19 @@ export default function DjMode() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-stone-900 text-sm font-medium truncate">{item.song.title}</p>
+                  {item.dedicationMessage && (
+                    <p className="text-stone-600 text-xs italic truncate">&ldquo;{item.dedicationMessage}&rdquo;</p>
+                  )}
                   {(item.customerName && (
                     <p className="text-stone-500 text-xs">
                       {item.customerName === 'System' ? 'Played by system' : item.customerName}
                     </p>
                   ))}
+                  {(item.voteCount ?? 0) > 0 && (
+                    <p className="text-stone-500 text-xs flex items-center gap-1 mt-0.5">
+                      <ThumbsUp className="w-3 h-3" /> {item.voteCount}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => api.post(`/queue/${item.id}/skip`, {})}

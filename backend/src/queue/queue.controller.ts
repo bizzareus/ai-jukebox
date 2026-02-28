@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
 import { Admin } from '../auth/admin.entity';
 import { ReplayDto } from './dto/replay.dto';
+import { UpvoteDto } from './dto/upvote.dto';
 
 @Controller('queue')
 export class QueueController {
@@ -67,5 +68,10 @@ export class QueueController {
   @UseGuards(JwtAuthGuard)
   skip(@Param('itemId') itemId: string) {
     return this.queueService.skip(itemId);
+  }
+
+  @Post(':itemId/upvote')
+  upvote(@Param('itemId') itemId: string, @Body() dto: UpvoteDto) {
+    return this.queueService.upvote(itemId, dto.sessionId);
   }
 }

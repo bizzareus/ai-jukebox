@@ -23,8 +23,13 @@ export interface Venue {
   /** Flat discount in ₹. Final price = pricePerSong - discountAmount (min 1). */
   discountAmount?: number;
   qrCodeUrl?: string;
-  /** Venue branding (e.g. logo for QR overlay). */
-  settings?: { logoUrl?: string };
+  /** Venue branding */
+  logoUrl?: string;
+  coverImageUrl?: string;
+  themeColor?: string;
+  tagline?: string;
+  /** Legacy / QR overlay; democraticMode for vote-based queue order */
+  settings?: { logoUrl?: string; democraticMode?: boolean };
 }
 
 export interface Playlist {
@@ -56,8 +61,10 @@ export interface QueueItem {
   song: Song;
   customerName?: string;
   customerMobile?: string;
+  dedicationMessage?: string;
   status: QueueItemStatus;
   position: number;
+  voteCount?: number;
   queuedAt: string;
   playedAt?: string;
   eta?: number;

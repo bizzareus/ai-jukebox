@@ -1,4 +1,11 @@
-import { IsInt, IsOptional, IsString, IsUrl, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Min,
+} from 'class-validator';
 
 export class UpdateVenueDto {
   @IsOptional()
@@ -28,4 +35,22 @@ export class UpdateVenueDto {
   @IsString()
   @IsUrl()
   logoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl()
+  coverImageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  themeColor?: string;
+
+  @IsOptional()
+  @IsString()
+  tagline?: string;
+
+  /** When true, queue order is by vote count (democratic mode). */
+  @IsOptional()
+  @IsBoolean()
+  democraticMode?: boolean;
 }

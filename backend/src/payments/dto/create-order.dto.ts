@@ -14,4 +14,8 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   customerMobile?: string;
+
+  @IsString()
+  @IsOptional()
+  dedicationMessage?: string;
 }

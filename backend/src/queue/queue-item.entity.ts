@@ -51,6 +51,14 @@ export class QueueItem {
   customerMobile: string;
 
   @Column({
+    name: 'dedication_message',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  dedicationMessage: string;
+
+  @Column({
     type: 'enum',
     enum: QueueItemStatus,
     default: QueueItemStatus.PENDING,
@@ -59,6 +67,9 @@ export class QueueItem {
 
   @Column({ name: 'position', type: 'int' })
   position: number;
+
+  @Column({ name: 'vote_count', type: 'int', default: 0 })
+  voteCount: number;
 
   @Column({ name: 'queued_at', type: 'timestamptz', default: () => 'NOW()' })
   queuedAt: Date;

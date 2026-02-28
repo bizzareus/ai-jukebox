@@ -82,7 +82,15 @@ export class VenuesService {
     const updates: Partial<
       Pick<
         Venue,
-        'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'
+        | 'name'
+        | 'slug'
+        | 'upiVpa'
+        | 'pricePerSong'
+        | 'discountAmount'
+        | 'logoUrl'
+        | 'coverImageUrl'
+        | 'themeColor'
+        | 'tagline'
       >
     > & {
       settings?: Record<string, unknown>;
@@ -95,8 +103,19 @@ export class VenuesService {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
       updates.discountAmount = Math.min(dto.discountAmount, maxPrice);
     }
-    if (dto.logoUrl !== undefined) {
-      updates.settings = { ...(venue.settings ?? {}), logoUrl: dto.logoUrl };
+    if (dto.logoUrl !== undefined) updates.logoUrl = dto.logoUrl;
+    if (dto.coverImageUrl !== undefined)
+      updates.coverImageUrl = dto.coverImageUrl;
+    if (dto.themeColor !== undefined) updates.themeColor = dto.themeColor;
+    if (dto.tagline !== undefined) updates.tagline = dto.tagline;
+    if (dto.democraticMode !== undefined || dto.logoUrl !== undefined) {
+      updates.settings = {
+        ...(venue.settings ?? {}),
+        ...(dto.democraticMode !== undefined && {
+          democraticMode: dto.democraticMode,
+        }),
+        ...(dto.logoUrl !== undefined && { logoUrl: dto.logoUrl }),
+      };
     }
     if (Object.keys(updates).length > 0) {
       await this.venueRepository.update(id, updates as Record<string, unknown>);

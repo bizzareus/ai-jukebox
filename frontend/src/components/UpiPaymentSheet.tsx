@@ -18,7 +18,7 @@ interface UpiPaymentSheetProps {
   amount?: number;
   songId?: string;
   venueId?: string;
-  onCreateOrder?: (customerName: string, customerMobile: string) => Promise<CreateOrderResponse>;
+  onCreateOrder?: (customerName: string, customerMobile: string, dedicationMessage?: string) => Promise<CreateOrderResponse>;
   /** Name and mobile used for the current order (shown above QR) */
   customerName?: string;
   customerMobile?: string;
@@ -103,6 +103,7 @@ export function UpiPaymentSheet({
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [formName, setFormName] = useState('');
   const [formMobile, setFormMobile] = useState('');
+  const [formDedication, setFormDedication] = useState('');
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [simulatingPayment, setSimulatingPayment] = useState(false);
   const [notifySubscribing, setNotifySubscribing] = useState(false);
@@ -236,7 +237,7 @@ export function UpiPaymentSheet({
     setStoredCustomer(formName.trim(), formMobile.trim());
     setCreatingOrder(true);
     try {
-      await onCreateOrder(formName.trim(), formMobile.trim());
+      await onCreateOrder(formName.trim(), formMobile.trim(), formDedication.trim() || undefined);
     } finally {
       setCreatingOrder(false);
     }
@@ -273,6 +274,17 @@ export function UpiPaymentSheet({
                 value={formMobile}
                 onChange={(e) => setFormMobile(e.target.value)}
                 maxLength={10}
+                className="w-full bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-stone-500 mb-1.5">Dedication (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Happy birthday, Priya!"
+                value={formDedication}
+                onChange={(e) => setFormDedication(e.target.value.slice(0, 500))}
+                maxLength={500}
                 className="w-full bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
               />
             </div>

@@ -111,7 +111,7 @@ export default function SuperAdminVenueDetail() {
       setEditPricePerSong(venue.pricePerSong);
       setEditDiscountAmount(venue.discountAmount ?? 0);
     }
-  }, [venue?.id]);
+  }, [venue]);
 
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();

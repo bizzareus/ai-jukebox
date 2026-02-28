@@ -47,13 +47,14 @@ export default function SongDetail() {
     setPaymentOpen(true);
   };
 
-  const handleCreateOrder = async (customerName: string, customerMobile: string) => {
+  const handleCreateOrder = async (customerName: string, customerMobile: string, dedicationMessage?: string) => {
     if (!song || !venueId) throw new Error('Missing song or venue');
     const res = await api.post<CreateOrderResponse>('/payments/create-order', {
       songId: song.id ?? songId,
       venueId,
       customerName: customerName.trim() || undefined,
       customerMobile: customerMobile.trim() || undefined,
+      dedicationMessage: dedicationMessage?.trim() || undefined,
     });
     setSubmittedCustomerName(customerName);
     setSubmittedCustomerMobile(customerMobile);

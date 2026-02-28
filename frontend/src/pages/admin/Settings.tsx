@@ -34,7 +34,12 @@ export default function Settings() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
 
   const [logoUrl, setLogoUrl] = useState("");
-  const [logoUrlSaving, setLogoUrlSaving] = useState(false);
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [themeColor, setThemeColor] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [democraticMode, setDemocraticMode] = useState(false);
+  const [democraticModeSaving, setDemocraticModeSaving] = useState(false);
   const [qrRegenerating, setQrRegenerating] = useState(false);
   const [pushEnabling, setPushEnabling] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -43,7 +48,11 @@ export default function Settings() {
     if (venue) {
       setPricePerSong(venue.pricePerSong);
       setDiscountAmount(venue.discountAmount ?? 0);
-      setLogoUrl(venue.settings?.logoUrl ?? "");
+      setLogoUrl(venue.logoUrl ?? venue.settings?.logoUrl ?? "");
+      setCoverImageUrl(venue.coverImageUrl ?? "");
+      setThemeColor(venue.themeColor ?? "");
+      setTagline(venue.tagline ?? "");
+      setDemocraticMode(venue.settings?.democraticMode ?? false);
     }
   }, [venue]);
 
@@ -98,7 +107,7 @@ export default function Settings() {
     try {
       const dataUrl = await getQrImageWithOptionalLogo(
         venue.qrCodeUrl,
-        venue.settings?.logoUrl,
+        venue.logoUrl ?? venue.settings?.logoUrl,
       );
       const win = window.open("", "_blank");
       if (!win) {
@@ -259,14 +268,30 @@ export default function Settings() {
     }
   };
 
-  const handleSaveLogoUrl = async () => {
+  const handleSaveBranding = async () => {
     if (!venue) return;
-    setLogoUrlSaving(true);
+    setBrandingSaving(true);
     try {
-      await api.patch(`/venues/${venue.id}`, { logoUrl: logoUrl || undefined });
+      await api.patch(`/venues/${venue.id}`, {
+        logoUrl: logoUrl || undefined,
+        coverImageUrl: coverImageUrl || undefined,
+        themeColor: themeColor || undefined,
+        tagline: tagline || undefined,
+      });
       queryClient.invalidateQueries({ queryKey: ["venue", "current"] });
     } finally {
-      setLogoUrlSaving(false);
+      setBrandingSaving(false);
+    }
+  };
+
+  const handleSaveDemocraticMode = async () => {
+    if (!venue) return;
+    setDemocraticModeSaving(true);
+    try {
+      await api.patch(`/venues/${venue.id}`, { democraticMode: democraticMode });
+      queryClient.invalidateQueries({ queryKey: ["venue", "current"] });
+    } finally {
+      setDemocraticModeSaving(false);
     }
   };
 
@@ -412,6 +437,32 @@ export default function Settings() {
       </Card>
 
       <Card className="p-4 mb-5">
+        <h2 className="text-sm font-semibold text-stone-900 mb-3">Queue mode</h2>
+        <p className="text-stone-500 text-xs mb-4">
+          Democratic mode: customers can upvote pending songs; the most upvoted
+          songs play first. When off, queue order is first-come first-served.
+        </p>
+        <div className="flex items-center gap-3 mb-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={democraticMode}
+              onChange={(e) => setDemocraticMode(e.target.checked)}
+              className="accent-brand-600 w-4 h-4"
+            />
+            <span className="text-sm text-stone-700">Democratic mode (votes determine order)</span>
+          </label>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleSaveDemocraticMode}
+          loading={democraticModeSaving}
+        >
+          Save queue mode
+        </Button>
+      </Card>
+
+      <Card className="p-4 mb-5">
         <h2
           className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2"
           data-testid="settings-qr-heading"
@@ -482,10 +533,10 @@ export default function Settings() {
       <Card className="p-4 mb-5">
         <h2 className="text-sm font-semibold text-stone-900 mb-3">Branding</h2>
         <p className="text-stone-500 text-xs mb-4">
-          Optional logo URL. When set, the logo appears in the center of the QR
-          code when downloading or printing.
+          Logo, cover image, tagline and theme color for your venue page. Logo
+          also appears in the center of the QR code when printing.
         </p>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-4">
           <Input
             label="Logo URL"
             type="url"
@@ -493,12 +544,46 @@ export default function Settings() {
             value={logoUrl}
             onChange={(e) => setLogoUrl(e.target.value)}
           />
+          <Input
+            label="Cover image URL"
+            type="url"
+            placeholder="https://..."
+            value={coverImageUrl}
+            onChange={(e) => setCoverImageUrl(e.target.value)}
+          />
+          <Input
+            label="Tagline"
+            type="text"
+            placeholder="e.g. Your bar jukebox"
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+          />
+          <div>
+            <label className="block text-sm text-stone-700 mb-1.5">Theme color</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={themeColor || "#b91c1c"}
+                onChange={(e) => setThemeColor(e.target.value)}
+                className="w-10 h-10 rounded border border-stone-200 cursor-pointer"
+                title="Theme color"
+                aria-label="Theme color picker"
+              />
+              <input
+                type="text"
+                placeholder="#b91c1c"
+                value={themeColor}
+                onChange={(e) => setThemeColor(e.target.value)}
+                className="flex-1 bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 text-sm"
+              />
+            </div>
+          </div>
           <Button
             variant="outline"
-            onClick={handleSaveLogoUrl}
-            loading={logoUrlSaving}
+            onClick={handleSaveBranding}
+            loading={brandingSaving}
           >
-            Save logo URL
+            Save branding
           </Button>
         </div>
       </Card>

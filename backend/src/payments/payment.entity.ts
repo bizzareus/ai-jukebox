@@ -42,6 +42,14 @@ export class Payment {
   @Column({ name: 'customer_mobile', nullable: true })
   customerMobile: string;
 
+  @Column({
+    name: 'dedication_message',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  dedicationMessage: string;
+
   @Column({ type: 'int' })
   amount: number;
 

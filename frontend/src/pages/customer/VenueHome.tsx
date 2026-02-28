@@ -100,7 +100,7 @@ export default function VenueHome() {
       setMeta('meta[name="twitter:title"]', 'content', defaultTitle);
       setMeta('meta[name="twitter:description"]', 'content', defaultDescription);
     };
-  }, [venue?.id, venue?.name]);
+  }, [venue]);
 
   if (!venue) {
     return (
@@ -113,31 +113,51 @@ export default function VenueHome() {
     );
   }
 
+  const themeColor = venue.themeColor || '#b91c1c';
+
   return (
     <div className="min-h-screen bg-surface pb-24">
       <CustomerOnboarding />
-      {/* Header */}
-      <div className="px-4 pt-10 pb-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Music2 className="w-5 h-5 text-brand-600" />
-          <div className="flex flex-col leading-tight">
-            <span className="text-brand-600 font-semibold text-sm">MuzoBox</span>
-            <span className="text-stone-500 text-xs">your bar jukebox</span>
+      {/* Header with optional cover and branding */}
+      <div className="relative">
+        {(venue.coverImageUrl || venue.logoUrl) && (
+          <div className="h-40 bg-stone-200 overflow-hidden">
+            {venue.coverImageUrl ? (
+              <img src={venue.coverImageUrl} alt="" className="w-full h-full object-cover" />
+            ) : venue.logoUrl ? (
+              <div className="w-full h-full flex items-center justify-center bg-stone-100">
+                <img src={venue.logoUrl} alt={venue.name} className="max-h-24 max-w-[200px] object-contain" />
+              </div>
+            ) : null}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-surface" />
           </div>
+        )}
+        <div className="px-4 pt-10 pb-6">
+          <div className="flex items-center gap-2 mb-1">
+            {venue.logoUrl ? (
+              <img src={venue.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover border border-stone-200" />
+            ) : (
+              <Music2 className="w-5 h-5" style={{ color: themeColor }} />
+            )}
+            <div className="flex flex-col leading-tight">
+              <span className="font-semibold text-sm" style={{ color: themeColor }}>MuzoBox</span>
+              <span className="text-stone-500 text-xs">{venue.tagline || 'your bar jukebox'}</span>
+            </div>
+          </div>
+          <h1 className="font-display text-3xl font-bold text-stone-900">{venue.name}</h1>
+          <p className="text-stone-500 text-sm mt-1">
+            Pick a song, pay{' '}
+            {venue.discountAmount ? (
+              <>
+                <span className="line-through text-stone-400">₹{venue.pricePerSong}</span>
+                <span className="font-medium" style={{ color: themeColor }}> ₹{Math.max(1, venue.pricePerSong - venue.discountAmount)}</span>
+              </>
+            ) : (
+              <>₹{venue.pricePerSong}</>
+            )}{' '}
+            to queue it
+          </p>
         </div>
-        <h1 className="font-display text-3xl font-bold text-stone-900">{venue.name}</h1>
-        <p className="text-stone-500 text-sm mt-1">
-          Pick a song, pay{' '}
-          {venue.discountAmount ? (
-            <>
-              <span className="line-through text-stone-400">₹{venue.pricePerSong}</span>
-              <span className="text-brand-600 font-medium"> ₹{Math.max(1, venue.pricePerSong - venue.discountAmount)}</span>
-            </>
-          ) : (
-            <>₹{venue.pricePerSong}</>
-          )}{' '}
-          to queue it
-        </p>
       </div>
 
       {/* Up next banner */}
@@ -346,7 +366,7 @@ export default function VenueHome() {
         </div>
       )}
 
-      <NowPlayingBar queue={queue} />
+      <NowPlayingBar queue={queue} venueId={venue.id} />
     </div>
   );
 }

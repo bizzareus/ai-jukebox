@@ -79,11 +79,14 @@ export class PaymentsService {
       },
     });
 
+    const dedicationMessage =
+      dto.dedicationMessage?.trim?.().slice(0, 500) || undefined;
     const payment = this.paymentRepository.create({
       venueId: venue.id,
       songId: song.id,
       customerName: dto.customerName,
       customerMobile: dto.customerMobile,
+      dedicationMessage,
       razorpayOrderId: order.id,
       amount: effective,
       status: PaymentStatus.CREATED,

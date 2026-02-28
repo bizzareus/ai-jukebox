@@ -30,6 +30,18 @@ export class Venue {
   @Column({ name: 'qr_code_url', nullable: true })
   qrCodeUrl: string;
 
+  @Column({ name: 'logo_url', nullable: true })
+  logoUrl: string;
+
+  @Column({ name: 'cover_image_url', nullable: true })
+  coverImageUrl: string;
+
+  @Column({ name: 'theme_color', nullable: true, length: 50 })
+  themeColor: string;
+
+  @Column({ name: 'tagline', nullable: true, length: 255 })
+  tagline: string;
+
   @Column({ name: 'owner_id' })
   ownerId: string;
 
