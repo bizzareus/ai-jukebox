@@ -31,7 +31,7 @@ export default function Library() {
   const [addingSelectedTo, setAddingSelectedTo] = useState<string | null>(null);
   const [bulkAddProgress, setBulkAddProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const { data: playlists = [] } = useQuery<Playlist[]>({
+  const { data: playlists = [], isLoading: playlistsLoading } = useQuery<Playlist[]>({
     queryKey: ['playlists', venueId],
     queryFn: () => api.get<Playlist[]>(`/venues/${venueId}/playlists`),
     enabled: !!venueId,
@@ -345,6 +345,13 @@ export default function Library() {
 
       {/* Playlists */}
       <div className="flex flex-col gap-3">
+        {playlistsLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-stone-500">
+            <div className="w-10 h-10 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-3" />
+            <p className="text-sm">Loading collections...</p>
+          </div>
+        ) : (
+        <>
         {playlists.map((playlist) => (
           <Card key={playlist.id} className="overflow-hidden">
             <div className="flex items-center gap-3 p-4">
@@ -399,6 +406,8 @@ export default function Library() {
             <Music2 className="w-10 h-10 mx-auto mb-3 opacity-40" />
             <p className="text-sm">No playlists yet</p>
           </div>
+        )}
+        </>
         )}
       </div>
 
