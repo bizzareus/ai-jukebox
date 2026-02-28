@@ -115,15 +115,18 @@ export function UpiPaymentSheet({
   );
 
   useEffect(() => {
-    if (!open || !order || !canvasRef.current) return;
+    if (!open || !order) return;
 
     setStatus('waiting');
     setConfirmedPayload(null);
-    QRCode.toCanvas(canvasRef.current, order.upiString, {
-      width: 220,
-      margin: 1,
-      color: { dark: '#000000', light: '#ffffff' },
-    });
+    // Only draw QR from UPI string when not using Razorpay QR image
+    if (!order.qrImageUrl && order.upiString && canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, order.upiString, {
+        width: 220,
+        margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+    }
 
     const socket = getSocket();
     connectSocket();
@@ -137,7 +140,8 @@ export function UpiPaymentSheet({
 
     const poll = async () => {
       try {
-        const res = await api.get<OrderStatusResponse>(`/payments/order-status?orderId=${encodeURIComponent(order.orderId)}`);
+        const ref = order.paymentId ?? order.orderId;
+        const res = await api.get<OrderStatusResponse>(`/payments/order-status?orderId=${encodeURIComponent(ref)}`);
         if (res.status === 'paid' && res.queueItem) {
           applySuccess({
             queueItem: { id: res.queueItem.id, position: res.queueItem.position },
@@ -269,32 +273,46 @@ export function UpiPaymentSheet({
                 </div>
               </div>
             </div>
-            <a
-              href={order.upiString}
-              className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors"
-              onClick={(e) => {
-                window.location.href = order.upiString;
-                e.preventDefault();
-              }}
-              aria-label="Open UPI app to pay"
-            >
-              <canvas ref={canvasRef} className="rounded-xl block" />
-            </a>
+            {order.qrImageUrl ? (
+              <div className="rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white">
+                <img
+                  src={order.qrImageUrl}
+                  alt="Scan to pay with UPI"
+                  className="rounded-xl block w-full max-w-[220px] h-auto mx-auto"
+                />
+              </div>
+            ) : (
+              <a
+                href={order.upiString}
+                className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors"
+                onClick={(e) => {
+                  window.location.href = order.upiString;
+                  e.preventDefault();
+                }}
+                aria-label="Open UPI app to pay"
+              >
+                <canvas ref={canvasRef} className="rounded-xl block" />
+              </a>
+            )}
             <p className="text-stone-500 text-sm text-center">
-              Tap the QR code to open your UPI app
+              {order.qrImageUrl
+                ? 'Scan the QR code with your UPI app to pay'
+                : 'Tap the QR code to open your UPI app'}
             </p>
-            <a
-              href={order.upiString}
-              className="w-full"
-              onClick={(e) => {
-                window.location.href = order.upiString;
-                e.preventDefault();
-              }}
-            >
-              <Button variant="primary" size="lg" className="w-full">
-                Open UPI App
-              </Button>
-            </a>
+            {order.upiString ? (
+              <a
+                href={order.upiString}
+                className="w-full"
+                onClick={(e) => {
+                  window.location.href = order.upiString;
+                  e.preventDefault();
+                }}
+              >
+                <Button variant="primary" size="lg" className="w-full">
+                  Open UPI App
+                </Button>
+              </a>
+            ) : null}
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-xs">Waiting for payment confirmation...</span>

@@ -85,7 +85,10 @@ export interface CreateOrderResponse {
   orderId: string;
   paymentId: string;
   amount: number;
+  /** UPI deep link when using order-based flow; empty when using Razorpay QR (use qrImageUrl) */
   upiString: string;
+  /** Razorpay QR image URL; when set, show this instead of generating QR from upiString */
+  qrImageUrl?: string;
   /** True when using Razorpay test keys (rzp_test_*); show test UPI instructions */
   testMode?: boolean;
   /** Set in test mode only; use to open Razorpay Checkout for simulating UPI payment */

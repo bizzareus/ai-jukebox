@@ -17,11 +17,15 @@ import { VenuesService } from '../venues/venues.service';
 import { SongsService } from '../songs/songs.service';
 import { QueueService } from '../queue/queue.service';
 
-/** Razorpay webhook payload (payment.captured). */
+/** Razorpay webhook payload (payment.captured or qr_code.credited). */
 interface RazorpayWebhookPayload {
   event: string;
-  payload?: { payment?: { entity?: RazorpayPaymentEntity } };
+  payload?: {
+    payment?: { entity?: RazorpayPaymentEntity };
+    qr_code?: { entity?: { id: string } };
+  };
   payment?: { entity?: RazorpayPaymentEntity };
+  qr_code?: { entity?: { id: string } };
 }
 
 /** Razorpay payment entity from webhook. */
@@ -66,54 +70,41 @@ export class PaymentsService {
     const effective = this.effectivePrice(venue);
     const amountPaise = effective * 100;
 
-    const order = await this.razorpay.orders.create({
-      amount: amountPaise,
-      currency: 'INR',
-      receipt: `jb_${Date.now()}`,
-      notes: {
-        venueId: venue.id,
-        songId: song.id,
-        songTitle: song.title,
-        customerName: dto.customerName ?? '',
-        customerMobile: dto.customerMobile ?? '',
-      },
-    });
+    // Create Razorpay UPI QR (single-use, fixed amount); payment goes through Razorpay and triggers qr_code.credited webhook
+    const closeBy = Math.floor(Date.now() / 1000) + 600; // 10 min
+    const qr = await this.razorpay.qrCode.create({
+      type: 'upi_qr',
+      name: `Jukebox ${venue.name}`.slice(0, 255),
+      usage: 'single_use',
+      fixed_amount: true,
+      payment_amount: amountPaise,
+      description: song.title.slice(0, 255),
+      close_by: closeBy,
+    } as Parameters<Razorpay['qrCode']['create']>[0]);
 
     const payment = this.paymentRepository.create({
       venueId: venue.id,
       songId: song.id,
       customerName: dto.customerName,
       customerMobile: dto.customerMobile,
-      razorpayOrderId: order.id,
+      razorpayOrderId: null,
+      razorpayQrId: qr.id,
       amount: effective,
       status: PaymentStatus.CREATED,
     });
 
     await this.paymentRepository.save(payment);
 
-    const upiString = this.buildUpiString(
-      venue.upiVpa,
-      venue.name,
-      effective,
-      song.title,
-      order.id,
-    );
-
-    const keyId = this.configService.get<string>('RAZORPAY_KEY_ID') ?? '';
-    const isProduction =
-      this.configService.get<string>('NODE_ENV') === 'production';
-    const testMode = !isProduction && keyId.startsWith('rzp_test_');
     this.logger.log(
-      `Created order ${order.id} for song "${song.title}" at venue ${venue.name}${testMode ? ' (test mode)' : isProduction ? ' (production)' : ''}`,
+      `Created QR ${qr.id} for song "${song.title}" at venue ${venue.name}`,
     );
 
     return {
-      orderId: order.id,
+      orderId: payment.id,
       paymentId: payment.id,
       amount: effective,
-      upiString,
-      testMode: isProduction ? false : testMode,
-      razorpayKeyId: testMode ? keyId : undefined,
+      upiString: '',
+      qrImageUrl: qr.image_url,
       song: { id: song.id, title: song.title, thumbnailUrl: song.thumbnailUrl },
       venue: { id: venue.id, name: venue.name },
     };
@@ -192,7 +183,60 @@ export class PaymentsService {
       }
     }
 
+    if (event === 'qr_code.credited') {
+      const qrEntity =
+        payload?.payload?.qr_code?.entity ?? payload?.qr_code?.entity;
+      const paymentEntity: RazorpayPaymentEntity | undefined =
+        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
+      if (!qrEntity?.id) {
+        this.logger.warn(
+          'Razorpay webhook: qr_code entity missing from qr_code.credited payload',
+        );
+        return { received: true };
+      }
+      try {
+        await this.handleQrCodeCredited(qrEntity.id, paymentEntity?.id);
+      } catch (err) {
+        this.logger.error(
+          `qr_code.credited handling failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        throw err;
+      }
+    }
+
     return { received: true };
+  }
+
+  private async handleQrCodeCredited(
+    qrCodeId: string,
+    razorpayPaymentId: string | undefined,
+  ): Promise<Payment | null> {
+    const payment = await this.paymentRepository.findOne({
+      where: { razorpayQrId: qrCodeId },
+    });
+    if (!payment) {
+      this.logger.warn(`No payment found for QR code ${qrCodeId}`);
+      return null;
+    }
+    if (payment.status === PaymentStatus.PAID) {
+      this.logger.log(`QR ${qrCodeId} already processed — skipping`);
+      return payment;
+    }
+    if (razorpayPaymentId) payment.razorpayPaymentId = razorpayPaymentId;
+    payment.status = PaymentStatus.PAID;
+    const saved = await this.paymentRepository.save(payment);
+    this.logger.log(
+      `QR code credited: ${qrCodeId} -> payment ${saved.id} (Razorpay pay id: ${razorpayPaymentId ?? 'n/a'})`,
+    );
+    try {
+      await this.queueService.enqueueFromPayment(saved.id);
+    } catch (err) {
+      this.logger.error(
+        `Enqueue from payment failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
+    }
+    return saved;
   }
 
   private async handlePaymentCaptured(
@@ -246,12 +290,20 @@ export class PaymentsService {
     });
   }
 
-  /** Public order status for polling: status + queue item when paid (so frontend can show success without relying only on webhook). */
-  async getOrderStatus(orderId: string): Promise<{
+  /** Public order status for polling: status + queue item when paid. Accepts Razorpay orderId or our paymentId (UUID). */
+  async getOrderStatus(orderIdOrPaymentId: string): Promise<{
     status: 'created' | 'paid';
     queueItem?: { id: string; position: number; eta: number };
   }> {
-    const payment = await this.findByOrderId(orderId);
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        orderIdOrPaymentId,
+      );
+    const payment = isUuid
+      ? await this.paymentRepository.findOne({
+          where: { id: orderIdOrPaymentId },
+        })
+      : await this.findByOrderId(orderIdOrPaymentId);
     if (!payment) {
       throw new NotFoundException('Order not found');
     }

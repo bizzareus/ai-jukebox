@@ -27,11 +27,14 @@ export class Payment {
   @JoinColumn({ name: 'venue_id' })
   venue: Venue;
 
-  @Column({ name: 'razorpay_order_id', unique: true })
-  razorpayOrderId: string;
+  @Column({ name: 'razorpay_order_id', unique: true, nullable: true })
+  razorpayOrderId: string | null;
+
+  @Column({ name: 'razorpay_qr_id', unique: true, nullable: true })
+  razorpayQrId: string | null;
 
   @Column({ name: 'razorpay_payment_id', nullable: true, unique: true })
-  razorpayPaymentId: string;
+  razorpayPaymentId: string | null;
 
   @Column({ name: 'song_id' })
   songId: string;

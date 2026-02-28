@@ -60,7 +60,8 @@ export class QueueService {
     this.queueGateway.emitQueueUpdated(payment.venueId, queue);
 
     const eta = this.calculateEta(queue, saved.id);
-    this.queueGateway.emitQueueConfirmed(payment.razorpayOrderId, {
+    const orderRoomId = payment.razorpayOrderId ?? payment.id;
+    this.queueGateway.emitQueueConfirmed(orderRoomId, {
       queueItem: saved,
       position,
       eta,
