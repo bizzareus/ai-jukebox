@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { BottomSheet } from './ui/BottomSheet';
 import { Button } from './ui/Button';
+import { CroppedRazorpayQr } from './CroppedRazorpayQr';
 import { api } from '../services/api';
 import { getSocket, connectSocket } from '../services/socket';
 import * as notifications from '../services/notifications';
@@ -302,21 +303,7 @@ export function UpiPaymentSheet({
                 </a>
               </>
             ) : order.qrImageUrl ? (
-              <>
-                <p className="text-stone-500 text-sm text-center">
-                  Open the link below to pay with your UPI app
-                </p>
-                <a
-                  href={order.qrImageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full"
-                >
-                  <Button variant="primary" size="lg" className="w-full">
-                    Pay with UPI
-                  </Button>
-                </a>
-              </>
+              <CroppedRazorpayQr qrImageUrl={order.qrImageUrl} />
             ) : null}
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />
