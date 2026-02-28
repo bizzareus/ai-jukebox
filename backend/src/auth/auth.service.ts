@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { Admin } from './admin.entity';
+import { Admin, AdminRole } from './admin.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -61,6 +61,24 @@ export class AuthService {
 
   async me(adminId: string) {
     return this.adminRepository.findOne({ where: { id: adminId }, relations: ['venue'] });
+  }
+
+  async createVenueAdmin(venueId: string, email: string, password: string, name: string) {
+    const existing = await this.adminRepository.findOne({ where: { email } });
+    if (existing) {
+      throw new ConflictException('Email already in use');
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const admin = this.adminRepository.create({
+      email,
+      passwordHash,
+      name,
+      role: AdminRole.VENUE_ADMIN,
+      venueId,
+    });
+    const saved = await this.adminRepository.save(admin);
+    this.logger.log(`Created venue admin: ${saved.email} for venue ${venueId}`);
+    return saved;
   }
 
   async changePassword(adminId: string, dto: ChangePasswordDto) {

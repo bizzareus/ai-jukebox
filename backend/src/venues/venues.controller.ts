@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuard
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
+import { AddVenueAdminDto } from './dto/add-venue-admin.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
@@ -21,6 +22,17 @@ export class VenuesController {
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   create(@Body() dto: CreateVenueDto, @CurrentAdmin() admin: Admin) {
     return this.venuesService.create(dto, admin.id);
+  }
+
+  @Post(':id/admins')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  addAdmin(@Param('id') venueId: string, @Body() dto: AddVenueAdminDto) {
+    return this.venuesService.addAdminToVenue(
+      venueId,
+      dto.email,
+      dto.password,
+      dto.name,
+    );
   }
 
   @Get('mine')

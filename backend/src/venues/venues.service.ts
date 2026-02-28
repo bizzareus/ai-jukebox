@@ -10,6 +10,7 @@ import * as QRCode from 'qrcode';
 import { Venue } from './venue.entity';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
+import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class VenuesService {
@@ -18,6 +19,7 @@ export class VenuesService {
   constructor(
     @InjectRepository(Venue)
     private readonly venueRepository: Repository<Venue>,
+    private readonly authService: AuthService,
   ) {}
 
   async create(dto: CreateVenueDto, ownerId: string): Promise<Venue> {
@@ -25,7 +27,9 @@ export class VenuesService {
     if (existing) throw new ConflictException('Slug already taken');
 
     const venue = this.venueRepository.create({
-      ...dto,
+      name: dto.name,
+      slug: dto.slug,
+      upiVpa: dto.upiVpa,
       ownerId,
       pricePerSong: dto.pricePerSong ?? 100,
     });
@@ -35,7 +39,15 @@ export class VenuesService {
     const qrCodeUrl = await this.generateQrCode(saved.slug);
     saved.qrCodeUrl = qrCodeUrl;
     const final = await this.venueRepository.save(saved);
-    this.logger.log(`Created venue: ${final.name} [${final.slug}]`);
+
+    await this.authService.createVenueAdmin(
+      final.id,
+      dto.adminEmail,
+      dto.adminPassword,
+      dto.adminName ?? `${dto.name} Admin`,
+    );
+
+    this.logger.log(`Created venue: ${final.name} [${final.slug}] with admin ${dto.adminEmail}`);
     return final;
   }
 
@@ -68,6 +80,21 @@ export class VenuesService {
       return this.findById(id);
     }
     return venue;
+  }
+
+  async addAdminToVenue(
+    venueId: string,
+    email: string,
+    password: string,
+    name?: string,
+  ) {
+    await this.findById(venueId);
+    return this.authService.createVenueAdmin(
+      venueId,
+      email,
+      password,
+      name ?? 'Venue Admin',
+    );
   }
 
   async refreshQrCode(venueId: string): Promise<Venue> {

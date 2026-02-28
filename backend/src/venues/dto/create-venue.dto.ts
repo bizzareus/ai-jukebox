@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class CreateVenueDto {
   @IsString()
@@ -14,4 +14,15 @@ export class CreateVenueDto {
   @IsOptional()
   @Min(1)
   pricePerSong?: number;
+
+  @IsEmail()
+  adminEmail: string;
+
+  @IsString()
+  @MinLength(8)
+  adminPassword: string;
+
+  @IsString()
+  @IsOptional()
+  adminName?: string;
 }
