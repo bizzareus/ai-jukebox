@@ -173,7 +173,7 @@ export function UpiPaymentSheet({
     QRCode.toCanvas(canvasRef.current, order.upiString, {
       width: 220,
       margin: 1,
-      color: { dark: '#b91c1c', light: '#ffffff' },
+      color: { dark: '#000000', light: '#ffffff' },
     });
 
     const socket = getSocket();
@@ -320,9 +320,17 @@ export function UpiPaymentSheet({
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden border-2 border-brand-200 p-1 bg-white">
-              <canvas ref={canvasRef} className="rounded-xl" />
-            </div>
+            <a
+              href={order.upiString}
+              className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors"
+              onClick={(e) => {
+                window.location.href = order.upiString;
+                e.preventDefault();
+              }}
+              aria-label="Open UPI app to pay"
+            >
+              <canvas ref={canvasRef} className="rounded-xl block" />
+            </a>
             {order.testMode && (
               <div className="w-full rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">
                 <p className="text-amber-800 text-sm font-medium">Test mode — simulate payment</p>
@@ -368,9 +376,9 @@ export function UpiPaymentSheet({
               </div>
             )}
             {!order.testMode && (
-<p className="text-stone-500 text-sm text-center">
-              Tap the QR code to open your UPI app
-            </p>
+              <p className="text-stone-500 text-sm text-center">
+                Tap the QR code to open your UPI app
+              </p>
             )}
             {!order.testMode && (
               <a

@@ -58,7 +58,7 @@ html, body {
   display: none;
 }
 
-/* Clear mobile browser address bar; use on sticky/fixed top headers */
+/* Clear mobile browser address bar; compact so top bar isn’t too tall */
 .safe-top {
-  padding-top: max(3.5rem, calc(env(safe-area-inset-top, 0px) + 2.5rem));
+  padding-top: max(2rem, calc(env(safe-area-inset-top, 0px) + 1.25rem));
 }

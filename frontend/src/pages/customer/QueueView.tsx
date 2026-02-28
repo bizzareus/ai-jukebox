@@ -1,6 +1,6 @@
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Music2, ChevronDown, MoreVertical, User, Zap, Plus } from 'lucide-react';
+import { Music2, ChevronDown, User, Zap, Plus } from 'lucide-react';
 import { api } from '../../services/api';
 import { useQueue } from '../../hooks/useQueue';
 import { QueueItemStatus, type Venue, type QueueItem } from '../../types';
@@ -49,8 +49,8 @@ export default function QueueView() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Header: back + menu — safe-top clears mobile browser address bar */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pb-2 bg-surface/95 backdrop-blur-sm border-b border-surface-border safe-top">
+      {/* Header: back — safe-top clears mobile browser address bar */}
+      <div className="sticky top-0 z-10 flex items-center px-4 pb-2 bg-surface/95 backdrop-blur-sm border-b border-surface-border safe-top">
         <button
           type="button"
           onClick={() => navigate(`/${slug}`)}
@@ -58,13 +58,6 @@ export default function QueueView() {
           aria-label="Back"
         >
           <ChevronDown className="w-6 h-6 rotate-90" />
-        </button>
-        <button
-          type="button"
-          className="p-2 rounded-full text-stone-600 hover:bg-stone-100 transition-colors"
-          aria-label="Menu"
-        >
-          <MoreVertical className="w-5 h-5" />
         </button>
       </div>
 
@@ -113,13 +106,6 @@ export default function QueueView() {
                       />
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="w-10 h-10 rounded-full border border-surface-border flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors shrink-0"
-                    aria-label="Add to playlist"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -179,21 +165,19 @@ export default function QueueView() {
                           />
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <div className="w-8 h-8 rounded-full border border-brand-200 flex items-center justify-center text-brand-600">
-                          <Zap className="w-3.5 h-3.5" />
-                        </div>
-                        <button
-                          type="button"
-                          className="p-2 text-stone-400 hover:text-stone-700 transition-colors"
-                          aria-label="Options"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                      </div>
                     </div>
                   );
                 })}
+                <div className="px-4 py-4 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/${slug}`)}
+                    className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-stone-200 text-stone-600 text-sm font-medium hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50/50 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add another song to queue
+                  </button>
+                </div>
               </div>
             ) : !nowPlaying ? (
               <div className="text-center py-16 text-stone-500">
@@ -203,15 +187,24 @@ export default function QueueView() {
                 <button
                   type="button"
                   onClick={() => navigate(`/${slug}`)}
-                  className="mt-4 text-brand-600 text-sm font-medium hover:underline"
+                  className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition-colors"
                 >
-                  Pick a song
+                  <Plus className="w-4 h-4" />
+                  Add a song to queue
                 </button>
               </div>
             ) : (
-              <p className="text-stone-500 text-sm text-center py-8 px-4">
-                No more songs in queue
-              </p>
+              <div className="text-center py-8 px-4">
+                <p className="text-stone-500 text-sm mb-4">No more songs in queue</p>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/${slug}`)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add another song to queue
+                </button>
+              </div>
             )}
           </div>
 

@@ -24,7 +24,7 @@ export default function VenueHome() {
     enabled: !!slug,
   });
 
-  const { data: playlists } = useQuery<Playlist[]>({
+  const { data: playlists, isLoading: playlistsLoading } = useQuery<Playlist[]>({
     queryKey: ['playlists', venue?.id],
     queryFn: () => api.get<Playlist[]>(`/venues/${venue!.id}/playlists`),
     enabled: !!venue?.id,
@@ -306,7 +306,19 @@ export default function VenueHome() {
             <h2 className="text-stone-900 font-semibold">Collections</h2>
           </div>
           <div className="flex flex-col gap-3 px-4">
-            {(playlists ?? []).map((playlist) => (
+            {playlistsLoading ? (
+              <div className="flex flex-col gap-3 py-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-4 rounded-xl bg-stone-100 animate-pulse flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl bg-stone-200 shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 rounded bg-stone-200 w-3/4" />
+                      <div className="h-3 rounded bg-stone-200 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (playlists ?? []).map((playlist) => (
               <Card
                 key={playlist.id}
                 glow
@@ -336,7 +348,7 @@ export default function VenueHome() {
                 </div>
               </Card>
             ))}
-            {(playlists ?? []).length === 0 && (
+            {!playlistsLoading && (playlists ?? []).length === 0 && (
               <div className="text-center py-12 text-stone-500">
                 <Music2 className="w-10 h-10 mx-auto mb-3 opacity-50" />
                 <p className="text-sm">No collections yet</p>
