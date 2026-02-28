@@ -79,7 +79,7 @@ export class PaymentsService {
       usage: 'single_use',
       fixed_amount: true,
       payment_amount: amountPaise,
-      description: song.title.slice(0, 255),
+      description: `${venue.name} - ${song.title}`.slice(0, 255),
       close_by: closeBy,
     } as Parameters<Razorpay['qrCode']['create']>[0]);
 
@@ -154,9 +154,20 @@ export class PaymentsService {
     }
 
     const rawBodyString = rawBody.toString();
+    let payload: RazorpayWebhookPayload;
+    try {
+      payload = JSON.parse(rawBodyString) as RazorpayWebhookPayload;
+    } catch {
+      throw new BadRequestException('Invalid webhook JSON');
+    }
+
+    // QR code webhooks require body with escaped slashes for signature validation (https://razorpay.com/docs/payments/qr-codes/subscribe-to-webhooks/)
+    const bodyForValidation = payload.event?.startsWith('qr_code.')
+      ? JSON.stringify(payload).replace(/\//g, '\\/')
+      : rawBodyString;
     try {
       const isValid = validateWebhookSignature(
-        rawBodyString,
+        bodyForValidation,
         signature.trim(),
         webhookSecret,
       );
@@ -174,7 +185,6 @@ export class PaymentsService {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const payload = JSON.parse(rawBody.toString()) as RazorpayWebhookPayload;
     const event = payload.event;
 
     this.logger.log(`Razorpay webhook: ${event}`);
@@ -305,7 +315,7 @@ export class PaymentsService {
     });
   }
 
-  /** Public order status for polling: status + queue item when paid. Accepts Razorpay orderId or our paymentId (UUID). */
+  /** Public order status for polling: status + queue item when paid. Accepts Razorpay orderId or our paymentId (UUID). For QR flow, fetches payments from Razorpay when not yet paid (see https://razorpay.com/docs/api/qr-codes/fetch-payments/). */
   async getOrderStatus(orderIdOrPaymentId: string): Promise<{
     status: 'created' | 'paid';
     queueItem?: { id: string; position: number; eta: number };
@@ -322,6 +332,40 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException('Order not found');
     }
+
+    if (payment.status !== PaymentStatus.PAID && payment.razorpayQrId) {
+      const qrId: string = payment.razorpayQrId;
+      try {
+        const res = (await this.razorpay.qrCode.fetchAllPayments(qrId, {
+          count: 10,
+        })) as { items?: Array<{ id?: string; status?: string }> };
+        const items = res?.items ?? [];
+        const captured = items.find((p) => p.status === 'captured');
+        const razorpayPaymentId =
+          captured && typeof captured.id === 'string' ? captured.id : null;
+        if (razorpayPaymentId) {
+          payment.razorpayPaymentId = razorpayPaymentId;
+          payment.status = PaymentStatus.PAID;
+          await this.paymentRepository.save(payment);
+          this.logger.log(
+            `QR ${qrId} payment detected via fetch: ${razorpayPaymentId}`,
+          );
+          try {
+            await this.queueService.enqueueFromPayment(payment.id);
+          } catch (err) {
+            this.logger.error(
+              `Enqueue from payment failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            throw err;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Fetch payments for QR ${qrId} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     if (payment.status !== PaymentStatus.PAID) {
       return { status: 'created' };
     }
