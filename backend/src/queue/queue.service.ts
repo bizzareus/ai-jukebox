@@ -60,7 +60,7 @@ export class QueueService {
     this.queueGateway.emitQueueUpdated(payment.venueId, queue);
 
     const eta = this.calculateEta(queue, saved.id);
-    const orderRoomId = payment.razorpayOrderId ?? payment.id;
+    const orderRoomId = payment.id;
     this.queueGateway.emitQueueConfirmed(orderRoomId, {
       queueItem: saved,
       position,
@@ -112,10 +112,10 @@ export class QueueService {
     const queue = await this.getVenueQueue(item.venueId);
     this.queueGateway.emitQueueUpdated(item.venueId, queue);
 
-    if (item.payment?.razorpayOrderId && item.song?.title) {
+    if (item.payment?.id && item.song?.title) {
       try {
         await this.notificationsService.notifyCustomerSongPlaying(
-          item.payment.razorpayOrderId,
+          item.payment.id,
           item.song.title,
         );
       } catch {

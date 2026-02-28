@@ -25,4 +25,9 @@ export class RegisterDto {
   @IsString()
   @IsOptional()
   venueId?: string;
+
+  /** Invite token from GTM onboarding link; when present, a venue is created and admin is assigned. */
+  @IsString()
+  @IsOptional()
+  invite?: string;
 }

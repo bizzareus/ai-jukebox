@@ -28,6 +28,11 @@ Use these at **http://localhost:5173/admin/login** after starting the backend an
 
 Customer app URL for this venue: **http://localhost:5173/sample-bar**
 
+## Migrations (existing DBs)
+
+- **QR-only payments:** If you previously ran `add-razorpay-qr.sql`, drop the old order column:  
+  `psql -d jukebox -f scripts/drop-razorpay-order-id.sql`
+
 ## Re-run seed only
 
 To re-run seed inserts on a fresh DB (drops nothing):

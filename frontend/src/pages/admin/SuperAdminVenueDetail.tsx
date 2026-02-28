@@ -32,7 +32,11 @@ interface PaymentRow {
   amount: number;
   createdAt: string;
   songId: string;
-  razorpayOrderId: string;
+  songTitle: string | null;
+  qrid: string | null;
+  customerName: string | null;
+  customerMobile: string | null;
+  status: 'paid' | 'failed' | 'created';
   razorpayPaymentId: string | null;
 }
 

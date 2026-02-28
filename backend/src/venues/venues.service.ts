@@ -1,5 +1,7 @@
 import {
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -19,8 +21,54 @@ export class VenuesService {
   constructor(
     @InjectRepository(Venue)
     private readonly venueRepository: Repository<Venue>,
+    @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
   ) {}
+
+  /** Generate a URL-safe slug from venue name and ensure uniqueness. */
+  private async uniqueSlugFromName(name: string): Promise<string> {
+    const base =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'venue';
+    let slug = base;
+    let n = 0;
+    while (true) {
+      const existing = await this.venueRepository.findOne({
+        where: { slug },
+      });
+      if (!existing) return slug;
+      n += 1;
+      slug = `${base}-${n}`;
+    }
+  }
+
+  /**
+   * Create a venue from an invite (GTM flow). Used when a bar registers via invite link.
+   * Owner is the super admin who sent the invite. Caller then creates the venue admin.
+   */
+  async createFromInvite(
+    venueName: string,
+    ownerId: string,
+    _address?: string,
+  ): Promise<Venue> {
+    const slug = await this.uniqueSlugFromName(venueName);
+    const defaultUpi = process.env.INVITE_DEFAULT_UPI_VPA || 'pending@venue';
+    const venue = this.venueRepository.create({
+      name: venueName,
+      slug,
+      upiVpa: defaultUpi,
+      ownerId,
+      pricePerSong: 100,
+    });
+    const saved = await this.venueRepository.save(venue);
+    const qrCodeUrl = await this.generateQrCode(saved.slug);
+    saved.qrCodeUrl = qrCodeUrl;
+    const final = await this.venueRepository.save(saved);
+    this.logger.log(`Created venue from invite: ${final.name} [${final.slug}]`);
+    return final;
+  }
 
   async create(dto: CreateVenueDto, ownerId: string): Promise<Venue> {
     const existing = await this.venueRepository.findOne({

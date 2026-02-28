@@ -1,14 +1,22 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { GtmService } from './gtm.service';
 import { ResolvePlaceDto } from './dto/resolve-place.dto';
 import { SendOnboardingDto } from './dto/send-onboarding.dto';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
+import { Admin } from '../auth/admin.entity';
 
 @Controller('gtm')
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
 export class GtmController {
   constructor(private readonly gtmService: GtmService) {}
+
+  @Get('leads')
+  async getLeads(@Query('limit') limit?: string) {
+    const n = limit ? Math.min(parseInt(limit, 10) || 100, 200) : 100;
+    return this.gtmService.getLeads(n);
+  }
 
   @Post('resolve-place')
   async resolvePlace(@Body() dto: ResolvePlaceDto) {
@@ -25,7 +33,10 @@ export class GtmController {
   }
 
   @Post('send-onboarding')
-  async sendOnboarding(@Body() dto: SendOnboardingDto) {
-    return this.gtmService.sendOnboarding(dto);
+  async sendOnboarding(
+    @Body() dto: SendOnboardingDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    return this.gtmService.sendOnboarding(dto, admin.id);
   }
 }

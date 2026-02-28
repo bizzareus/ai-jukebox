@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,6 +17,8 @@ import { Admin, AdminRole } from './admin.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { InviteTokenService } from '../gtm/invite-token.service';
+import { VenuesService } from '../venues/venues.service';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +28,9 @@ export class AuthService {
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
     private readonly jwtService: JwtService,
+    private readonly inviteTokenService: InviteTokenService,
+    @Inject(forwardRef(() => VenuesService))
+    private readonly venuesService: VenuesService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -32,6 +39,10 @@ export class AuthService {
     });
     if (existing) {
       throw new ConflictException('Email already in use');
+    }
+
+    if (dto.invite) {
+      return this.registerWithInvite(dto);
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -46,6 +57,31 @@ export class AuthService {
     const saved = await this.adminRepository.save(admin);
     this.logger.log(`Registered admin: ${saved.email}`);
     return this.buildTokenResponse(saved);
+  }
+
+  private async registerWithInvite(dto: RegisterDto) {
+    const payload = this.inviteTokenService.verify(dto.invite!);
+    if (!payload) {
+      throw new BadRequestException('Invalid or expired invite link. Please request a new one.');
+    }
+    if (payload.email.toLowerCase() !== dto.email.toLowerCase()) {
+      throw new BadRequestException('This invite link is for a different email address.');
+    }
+    const venue = await this.venuesService.createFromInvite(
+      payload.venueName,
+      payload.createdByAdminId,
+      payload.address,
+    );
+    const admin = await this.createVenueAdmin(
+      venue.id,
+      dto.email,
+      dto.password,
+      dto.name,
+    );
+    this.logger.log(
+      `Registered admin via invite: ${admin.email} for venue ${venue.name} [${venue.slug}]`,
+    );
+    return this.buildTokenResponse(admin);
   }
 
   async login(dto: LoginDto) {

@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Venue } from '../venues/venue.entity';
+import { Song } from '../songs/song.entity';
 
 export enum PaymentStatus {
   CREATED = 'created',
@@ -27,9 +28,6 @@ export class Payment {
   @JoinColumn({ name: 'venue_id' })
   venue: Venue;
 
-  @Column({ name: 'razorpay_order_id', type: 'varchar', unique: true, nullable: true })
-  razorpayOrderId: string | null;
-
   @Column({ name: 'razorpay_qr_id', type: 'varchar', unique: true, nullable: true })
   razorpayQrId: string | null;
 
@@ -38,6 +36,10 @@ export class Payment {
 
   @Column({ name: 'song_id' })
   songId: string;
+
+  @ManyToOne(() => Song, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'song_id' })
+  song: Song;
 
   @Column({ name: 'customer_name', nullable: true })
   customerName: string;

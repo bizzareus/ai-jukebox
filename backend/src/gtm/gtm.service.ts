@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import axios from 'axios';
 import { GtmLead } from './gtm-lead.entity';
 import { SendOnboardingDto } from './dto/send-onboarding.dto';
+import { InviteTokenService } from './invite-token.service';
 
 export interface ResolvedPlace {
   placeId: string;
@@ -22,6 +23,7 @@ export class GtmService {
     private readonly configService: ConfigService,
     @InjectRepository(GtmLead)
     private readonly gtmLeadRepository: Repository<GtmLead>,
+    private readonly inviteTokenService: InviteTokenService,
   ) {}
 
   /** Extract place name and optional lat,lng from a Google Maps URL. */
@@ -174,8 +176,16 @@ export class GtmService {
     }
   }
 
+  async getLeads(limit = 100): Promise<GtmLead[]> {
+    return this.gtmLeadRepository.find({
+      order: { sentAt: 'DESC' },
+      take: Math.min(limit, 200),
+    });
+  }
+
   async sendOnboarding(
     dto: SendOnboardingDto,
+    adminId?: string,
   ): Promise<{ ok: boolean; error?: string }> {
     const fromEmail =
       this.configService.get<string>('GTM_FROM_EMAIL') ||
@@ -184,6 +194,18 @@ export class GtmService {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     const signupUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
+    const inviteToken =
+      adminId != null
+        ? this.inviteTokenService.sign({
+            email: dto.email,
+            venueName: dto.placeName,
+            address: dto.address,
+            createdByAdminId: adminId,
+          })
+        : null;
+    const signupLink = inviteToken
+      ? `${signupUrl}/admin/register?invite=${encodeURIComponent(inviteToken)}`
+      : `${signupUrl}/admin/login`;
     const html = `
 <!DOCTYPE html>
 <html>
@@ -199,7 +221,7 @@ export class GtmService {
     <li>No hardware: use your existing speakers and phone.</li>
   </ul>
   <p>Sign up and start earning from your customers. Perfect for bars, cafes, and parties.</p>
-  <p><a href="${signupUrl}/admin/login" style="display:inline-block;background:#E11D48;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">Get started — sign up here</a></p>
+  <p><a href="${signupLink}" style="display:inline-block;background:#E11D48;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">Get started — sign up here</a></p>
   <p>If you have questions, reply to this email or call us at <a href="tel:+919999224767">+91 9999224767</a> to know more. We’re happy to help.</p>
   <p>Cheers,<br/>The Jukebox team</p>
 </body>
@@ -207,7 +229,7 @@ export class GtmService {
 `;
     if (!apiKey) {
       this.logger.warn('RESEND_API_KEY not set — storing lead only');
-      await this.saveLead(dto, 'skipped_no_provider');
+      await this.saveLead(dto, 'skipped_no_provider', adminId);
       return { ok: false, error: 'Email provider not configured' };
     }
     const replyTo = this.configService.get<string>('GTM_REPLY_TO');
@@ -226,7 +248,7 @@ export class GtmService {
         },
         timeout: 10000,
       });
-      await this.saveLead(dto, 'sent');
+      await this.saveLead(dto, 'sent', adminId);
       this.logger.log(
         `Onboarding email sent to ${dto.email} for ${dto.placeName}`,
       );
@@ -236,7 +258,7 @@ export class GtmService {
         ? e.response?.data?.message
         : (e as Error).message;
       this.logger.warn('Send onboarding failed', e);
-      await this.saveLead(dto, 'failed');
+      await this.saveLead(dto, 'failed', adminId);
       return { ok: false, error: message ?? 'Failed to send email' };
     }
   }
@@ -244,6 +266,7 @@ export class GtmService {
   private async saveLead(
     dto: SendOnboardingDto,
     status: string,
+    adminId?: string,
   ): Promise<void> {
     await this.gtmLeadRepository.save(
       this.gtmLeadRepository.create({
@@ -255,6 +278,7 @@ export class GtmService {
         email: dto.email,
         status,
         sentAt: new Date(),
+        createdByAdminId: adminId ?? null,
       }),
     );
   }

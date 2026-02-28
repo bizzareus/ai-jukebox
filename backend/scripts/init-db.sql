@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS playlist_songs (
 CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
-  razorpay_order_id VARCHAR(255) NOT NULL UNIQUE,
+  razorpay_qr_id VARCHAR(255) UNIQUE,
   razorpay_payment_id VARCHAR(255) UNIQUE,
   song_id UUID NOT NULL,
   customer_name VARCHAR(255),

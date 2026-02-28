@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe, Settings, Rocket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { authService } from '../../services/auth';
+import AdminOnboarding, { shouldShowAdminOnboarding } from '../../components/AdminOnboarding';
 
 const venueAdminNav = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -23,6 +24,8 @@ export default function AdminLayout() {
   const admin = authService.getStoredAdmin();
   const isSuperAdmin = admin?.role === 'super_admin';
   const navItems = isSuperAdmin ? superAdminNav : venueAdminNav;
+  const showOnboarding =
+    !isSuperAdmin && shouldShowAdminOnboarding(true);
 
   if (!authService.isAuthenticated()) {
     return <Navigate to="/admin/login" replace />;
@@ -30,6 +33,7 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
+      {showOnboarding && <AdminOnboarding />}
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-white shadow-sm">
         <div className="flex items-center gap-2">

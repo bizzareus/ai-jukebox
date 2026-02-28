@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle, History } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -13,7 +14,17 @@ interface ResolvedPlace {
   website?: string;
 }
 
+interface GtmLead {
+  id: string;
+  placeName: string | null;
+  email: string | null;
+  status: string;
+  sentAt: string;
+  createdAt: string;
+}
+
 export default function SuperAdminGtm() {
+  const queryClient = useQueryClient();
   const [mapsUrl, setMapsUrl] = useState('');
   const [resolving, setResolving] = useState(false);
   const [place, setPlace] = useState<ResolvedPlace | null>(null);
@@ -21,6 +32,11 @@ export default function SuperAdminGtm() {
   const [findingEmail, setFindingEmail] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  const { data: leads = [], isLoading: leadsLoading } = useQuery<GtmLead[]>({
+    queryKey: ['gtm', 'leads'],
+    queryFn: () => api.get<GtmLead[]>('/gtm/leads'),
+  });
 
   const handleResolve = async () => {
     if (!mapsUrl.trim()) return;
@@ -68,6 +84,9 @@ export default function SuperAdminGtm() {
         email: email.trim(),
       });
       setSendResult(result);
+      if (result?.ok) {
+        queryClient.invalidateQueries({ queryKey: ['gtm', 'leads'] });
+      }
     } catch (e) {
       setSendResult({
         ok: false,
@@ -75,6 +94,18 @@ export default function SuperAdminGtm() {
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const formatDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
+    } catch {
+      return iso;
     }
   };
 
@@ -201,6 +232,53 @@ export default function SuperAdminGtm() {
           <p className="text-sm">Paste a Google Maps link and click Resolve to get started.</p>
         </div>
       )}
+
+      <Card className="p-4 mt-6">
+        <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+          <History className="w-4 h-4 text-stone-500" />
+          Recent onboarding emails
+        </h2>
+        {leadsLoading ? (
+          <p className="text-stone-500 text-sm">Loading…</p>
+        ) : leads.length === 0 ? (
+          <p className="text-stone-500 text-sm">No onboarding emails sent yet.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-2">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left text-stone-500 border-b border-stone-200">
+                  <th className="py-2 px-2 font-medium">Venue</th>
+                  <th className="py-2 px-2 font-medium">Email</th>
+                  <th className="py-2 px-2 font-medium">Status</th>
+                  <th className="py-2 px-2 font-medium">Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map((lead) => (
+                  <tr key={lead.id} className="border-b border-stone-100">
+                    <td className="py-2 px-2 text-stone-900">{lead.placeName ?? '—'}</td>
+                    <td className="py-2 px-2 text-stone-700">{lead.email ?? '—'}</td>
+                    <td className="py-2 px-2">
+                      <span
+                        className={
+                          lead.status === 'sent'
+                            ? 'text-green-600'
+                            : lead.status === 'failed'
+                              ? 'text-red-600'
+                              : 'text-stone-500'
+                        }
+                      >
+                        {lead.status}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-stone-500">{formatDate(lead.sentAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -88,7 +88,6 @@ export class PaymentsService {
       songId: song.id,
       customerName: dto.customerName,
       customerMobile: dto.customerMobile,
-      razorpayOrderId: null,
       razorpayQrId: qr.id,
       amount: effective,
       status: PaymentStatus.CREATED,
@@ -267,10 +266,10 @@ export class PaymentsService {
   private async handlePaymentCaptured(
     paymentEntity: RazorpayPaymentEntity,
   ): Promise<Payment | null> {
-    const orderId = paymentEntity.order_id;
+    const qrIdOrOrderId = paymentEntity.order_id;
     const razorpayPaymentId = paymentEntity.id;
 
-    if (!orderId || !razorpayPaymentId) {
+    if (!qrIdOrOrderId || !razorpayPaymentId) {
       this.logger.warn(
         `Razorpay webhook: missing order_id or payment id in entity`,
       );
@@ -278,16 +277,16 @@ export class PaymentsService {
     }
 
     const payment = await this.paymentRepository.findOne({
-      where: { razorpayOrderId: orderId },
+      where: { razorpayQrId: qrIdOrOrderId },
     });
 
     if (!payment) {
-      this.logger.warn(`No payment found for order ${orderId}`);
+      this.logger.warn(`No payment found for QR/order ${qrIdOrOrderId}`);
       return null;
     }
 
     if (payment.status === PaymentStatus.PAID) {
-      this.logger.log(`Order ${orderId} already processed — skipping`);
+      this.logger.log(`QR ${qrIdOrOrderId} already processed — skipping`);
       return payment;
     }
 
@@ -295,7 +294,7 @@ export class PaymentsService {
     payment.status = PaymentStatus.PAID;
     const saved = await this.paymentRepository.save(payment);
     this.logger.log(
-      `Payment captured: ${razorpayPaymentId} for order ${orderId}`,
+      `Payment captured: ${razorpayPaymentId} for QR ${qrIdOrOrderId}`,
     );
 
     try {
@@ -311,7 +310,7 @@ export class PaymentsService {
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
     return this.paymentRepository.findOne({
-      where: { razorpayOrderId: orderId },
+      where: { id: orderId },
     });
   }
 
@@ -320,15 +319,9 @@ export class PaymentsService {
     status: 'created' | 'paid';
     queueItem?: { id: string; position: number; eta: number };
   }> {
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        orderIdOrPaymentId,
-      );
-    const payment = isUuid
-      ? await this.paymentRepository.findOne({
-          where: { id: orderIdOrPaymentId },
-        })
-      : await this.findByOrderId(orderIdOrPaymentId);
+    const payment = await this.paymentRepository.findOne({
+      where: { id: orderIdOrPaymentId },
+    });
     if (!payment) {
       throw new NotFoundException('Order not found');
     }
@@ -381,16 +374,36 @@ export class PaymentsService {
   async getVenueEarnings(venueId: string, startDate?: Date, endDate?: Date) {
     const qb = this.paymentRepository
       .createQueryBuilder('p')
-      .where('p.venue_id = :venueId', { venueId })
-      .andWhere('p.status = :status', { status: PaymentStatus.PAID });
+      .where('p.venue_id = :venueId', { venueId });
 
     if (startDate) qb.andWhere('p.created_at >= :startDate', { startDate });
     if (endDate) qb.andWhere('p.created_at <= :endDate', { endDate });
 
-    const payments = await qb.orderBy('p.created_at', 'DESC').getMany();
-    const total = payments.reduce((sum, p) => sum + p.amount, 0);
+    const payments = await qb
+      .leftJoinAndSelect('p.song', 'song')
+      .orderBy('p.created_at', 'DESC')
+      .getMany();
+    const paidOnly = payments.filter((p) => p.status === PaymentStatus.PAID);
+    const total = paidOnly.reduce((sum, p) => sum + p.amount, 0);
 
-    return { payments, total, count: payments.length };
+    const paymentsDto = payments.map((p) => ({
+      id: p.id,
+      amount: p.amount,
+      createdAt: p.createdAt,
+      songId: p.songId,
+      songTitle: p.song?.title ?? null,
+      qrid: p.razorpayQrId ?? null,
+      customerName: p.customerName ?? null,
+      customerMobile: p.customerMobile ?? null,
+      status: p.status,
+      razorpayPaymentId: p.razorpayPaymentId ?? null,
+    }));
+
+    return {
+      payments: paymentsDto,
+      total,
+      count: paidOnly.length,
+    };
   }
 
   private buildUpiString(

@@ -14,6 +14,27 @@ export const authService = {
     return res;
   },
 
+  async register(
+    email: string,
+    password: string,
+    name: string,
+    invite?: string,
+  ): Promise<AuthResponse> {
+    const body: { email: string; password: string; name: string; invite?: string } = {
+      email,
+      password,
+      name,
+    };
+    if (invite) body.invite = invite;
+    const res = await api.post<AuthResponse>('/auth/register', body);
+    localStorage.setItem('jukebox_token', res.accessToken);
+    localStorage.setItem('jukebox_admin', JSON.stringify(res.admin));
+    if (res.admin.role === 'venue_admin') {
+      sessionStorage.setItem('jukebox_show_onboarding', '1');
+    }
+    return res;
+  },
+
   async me(): Promise<Admin> {
     return api.get<Admin>('/auth/me');
   },

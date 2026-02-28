@@ -34,6 +34,9 @@ export class GtmLead {
   @Column({ name: 'sent_at', type: 'timestamptz' })
   sentAt: Date;
 
+  @Column({ name: 'created_by_admin_id', type: 'uuid', nullable: true })
+  createdByAdminId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

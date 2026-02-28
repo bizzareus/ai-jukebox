@@ -8,6 +8,7 @@ import SongDetail from './pages/customer/SongDetail';
 import QueueView from './pages/customer/QueueView';
 
 import AdminLogin from './pages/admin/Login';
+import AdminRegister from './pages/admin/Register';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/Dashboard';
 import DjMode from './pages/admin/DjMode';
@@ -46,6 +47,7 @@ export default function App() {
 
           {/* Admin routes */}
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/register" element={<AdminRegister />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminIndexRedirect />} />
             <Route path="dashboard" element={<AdminDashboard />} />
