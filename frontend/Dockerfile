@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 # Pass at build time so Vite bakes it in (e.g. Railway Variables or docker build --build-arg VITE_API_URL=...)
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
