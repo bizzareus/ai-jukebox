@@ -8,24 +8,39 @@ async function bootstrap() {
   }
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
-  const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
+  const allowedOrigins: string[] = (
+    process.env.FRONTEND_URL ?? 'http://localhost:5173'
+  )
     .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-  const isNgrokOrigin = (origin: string) =>
+    .map((o: string) => o.trim())
+    .filter((o): o is string => o.length > 0);
+  const isNgrokOrigin = (origin: string): boolean =>
     /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i.test(origin);
+  type CorsCallback = (err: Error | null, allow?: boolean) => void;
   app.enableCors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin) || isNgrokOrigin(origin)) return cb(null, true);
+    origin: (origin: string | undefined, cb: CorsCallback): void => {
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(origin) || isNgrokOrigin(origin)) {
+        cb(null, true);
+        return;
+      }
       cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
   );
 
   app.setGlobalPrefix('api');
