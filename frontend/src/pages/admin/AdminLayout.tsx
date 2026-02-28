@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe, Settings } from 'lucide-react';
+import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe, Settings, Rocket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { authService } from '../../services/auth';
 
@@ -14,6 +14,7 @@ const venueAdminNav = [
 const superAdminNav = [
   { to: '/admin/venues', icon: Building2, label: 'Venues' },
   { to: '/admin/global-library', icon: Globe, label: 'Global Library' },
+  { to: '/admin/gtm', icon: Rocket, label: 'GTM' },
 ];
 
 export default function AdminLayout() {

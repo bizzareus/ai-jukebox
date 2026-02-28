@@ -7,9 +7,10 @@ import { QueueGateway } from './queue.gateway';
 import { Payment } from '../payments/payment.entity';
 import { PlaylistsModule } from '../playlists/playlists.module';
 import { SongsModule } from '../songs/songs.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([QueueItem, Payment]), PlaylistsModule, SongsModule],
+  imports: [TypeOrmModule.forFeature([QueueItem, Payment]), PlaylistsModule, SongsModule, NotificationsModule],
   controllers: [QueueController],
   providers: [QueueService, QueueGateway],
   exports: [QueueService, QueueGateway],

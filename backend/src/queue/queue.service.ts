@@ -12,6 +12,7 @@ import { QueueGateway } from './queue.gateway';
 import { PlaylistsService } from '../playlists/playlists.service';
 import { SongsService } from '../songs/songs.service';
 import { Song } from '../songs/song.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const AUTO_PLAY_RECENT_HOURS = 2;
 
@@ -27,6 +28,7 @@ export class QueueService {
     private readonly queueGateway: QueueGateway,
     private readonly playlistsService: PlaylistsService,
     private readonly songsService: SongsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /** Called by payment webhook after payment is confirmed */
@@ -67,6 +69,13 @@ export class QueueService {
       eta,
     });
 
+    try {
+      const song = await this.songsService.findById(payment.songId);
+      await this.notificationsService.notifyAdminNewSongQueued(payment.venueId, song.title);
+    } catch {
+      // ignore
+    }
+
     return saved;
   }
 
@@ -91,7 +100,7 @@ export class QueueService {
   async markPlaying(itemId: string): Promise<QueueItem> {
     const item = await this.queueRepository.findOne({
       where: { id: itemId },
-      relations: ['song'],
+      relations: ['song', 'payment'],
     });
     if (!item) throw new NotFoundException('Queue item not found');
 
@@ -101,6 +110,17 @@ export class QueueService {
     this.queueGateway.emitNowPlaying(item.venueId, { queueItem: saved });
     const queue = await this.getVenueQueue(item.venueId);
     this.queueGateway.emitQueueUpdated(item.venueId, queue);
+
+    if (item.payment?.razorpayOrderId && item.song?.title) {
+      try {
+        await this.notificationsService.notifyCustomerSongPlaying(
+          item.payment.razorpayOrderId,
+          item.song.title,
+        );
+      } catch {
+        // ignore
+      }
+    }
 
     return saved;
   }

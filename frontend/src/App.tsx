@@ -15,6 +15,7 @@ import Library from './pages/admin/Library';
 import Analytics from './pages/admin/Analytics';
 import SuperAdminVenues from './pages/admin/SuperAdminVenues';
 import SuperAdminGlobalLibrary from './pages/admin/SuperAdminGlobalLibrary';
+import SuperAdminGtm from './pages/admin/SuperAdminGtm';
 import Settings from './pages/admin/Settings';
 import Landing from './pages/Landing';
 
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="venues" element={<SuperAdminVenues />} />
             <Route path="global-library" element={<SuperAdminGlobalLibrary />} />
+            <Route path="gtm" element={<SuperAdminGtm />} />
           </Route>
 
           <Route path="/" element={<Landing />} />

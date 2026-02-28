@@ -57,14 +57,17 @@ export class VenuesService {
 
   async update(id: string, dto: UpdateVenueDto): Promise<Venue> {
     const venue = await this.findById(id);
-    const updates: { pricePerSong?: number; discountAmount?: number } = {};
+    const updates: { pricePerSong?: number; discountAmount?: number; settings?: Record<string, unknown> } = {};
     if (dto.pricePerSong !== undefined) updates.pricePerSong = dto.pricePerSong;
     if (dto.discountAmount !== undefined) {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
       updates.discountAmount = Math.min(dto.discountAmount, maxPrice);
     }
+    if (dto.logoUrl !== undefined) {
+      updates.settings = { ...(venue.settings ?? {}), logoUrl: dto.logoUrl };
+    }
     if (Object.keys(updates).length > 0) {
-      await this.venueRepository.update(id, updates);
+      await this.venueRepository.update(id, updates as Record<string, unknown>);
       return this.findById(id);
     }
     return venue;

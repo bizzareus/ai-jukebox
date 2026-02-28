@@ -23,6 +23,8 @@ export interface Venue {
   /** Flat discount in ₹. Final price = pricePerSong - discountAmount (min 1). */
   discountAmount?: number;
   qrCodeUrl?: string;
+  /** Venue branding (e.g. logo for QR overlay). */
+  settings?: { logoUrl?: string };
 }
 
 export interface Playlist {

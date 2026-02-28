@@ -10,6 +10,8 @@ import { PlaylistsModule } from './playlists/playlists.module';
 import { PaymentsModule } from './payments/payments.module';
 import { QueueModule } from './queue/queue.module';
 import { YoutubeModule } from './youtube/youtube.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { GtmModule } from './gtm/gtm.module';
 
 @Module({
   controllers: [AppController],
@@ -63,6 +65,8 @@ import { YoutubeModule } from './youtube/youtube.module';
     PaymentsModule,
     QueueModule,
     YoutubeModule,
+    NotificationsModule,
+    GtmModule,
   ],
 })
 export class AppModule {}
