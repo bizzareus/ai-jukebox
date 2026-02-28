@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Playlist } from './playlist.entity';
@@ -9,6 +9,25 @@ import { SongsService } from '../songs/songs.service';
 import { Song } from '../songs/song.entity';
 
 export const GLOBAL_PLAYLIST_NAME = 'Global Library';
+
+/** YouTube playlist IDs the Data API cannot list (Music/Radio mixes, Watch Later, etc.). */
+const UNSUPPORTED_PLAYLIST_PREFIXES = ['RDCL', 'RDCM', 'HL', 'WL'];
+
+function extractListId(input: string): string {
+  const trimmed = input.trim();
+  const match = trimmed.match(/[?&]list=([^&\s]+)/);
+  return match ? match[1] : trimmed;
+}
+
+function ensurePlaylistImportable(youtubePlaylistId: string): void {
+  const listId = extractListId(youtubePlaylistId).toUpperCase();
+  const prefix = UNSUPPORTED_PLAYLIST_PREFIXES.find((p) => listId.startsWith(p));
+  if (prefix) {
+    throw new BadRequestException(
+      `This playlist type (${prefix}...) can't be imported. YouTube Music and Radio mixes, plus Watch Later/History, aren't supported by the YouTube API. Use a regular playlist link (URL with list=PL...) or create your own playlist and paste that link.`,
+    );
+  }
+}
 
 @Injectable()
 export class PlaylistsService {
@@ -76,6 +95,7 @@ export class PlaylistsService {
     playlistId: string,
     youtubePlaylistId: string,
   ): Promise<{ added: number; skipped: number; errors: string[] }> {
+    ensurePlaylistImportable(youtubePlaylistId);
     const playlist = await this.findById(playlistId);
     const videoIds =
       await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
@@ -262,6 +282,7 @@ export class PlaylistsService {
   async addSongsToGlobalByPlaylistId(
     youtubePlaylistId: string,
   ): Promise<{ added: number; skipped: number; errors: string[] }> {
+    ensurePlaylistImportable(youtubePlaylistId);
     const videoIds =
       await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
     if (videoIds.length === 0) {

@@ -202,7 +202,7 @@ export default function SuperAdminCollections() {
                           type="text"
                           value={playlistId}
                           onChange={(e) => { setPlaylistId(e.target.value); setImportResult(null); setImportError(''); }}
-                          placeholder="PL... or playlist URL"
+                          placeholder="youtube.com or music.youtube.com playlist URL"
                           className="flex-1 bg-white border border-surface-border rounded-xl px-4 py-2 text-stone-900 text-sm placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                         <Button type="submit" size="sm" loading={importingTo === col.id} disabled={!playlistId.trim()}>

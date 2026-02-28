@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { CheckCircle, ExternalLink, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { BottomSheet } from './ui/BottomSheet';
 import { Button } from './ui/Button';
 import { api } from '../services/api';
@@ -32,7 +32,6 @@ export interface QueueConfirmPayload {
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const POLL_INTERVAL_MS = 2000;
-const RAZORPAY_SCRIPT = 'https://checkout.razorpay.com/v1/checkout.js';
 const STORAGE_KEY_NAME = 'jukebox_customer_name';
 const STORAGE_KEY_MOBILE = 'jukebox_customer_mobile';
 
@@ -68,20 +67,6 @@ function formatEtaMessage(etaSeconds: number): string {
   return `Your song will come up in approx ${parts.join(' ')}`;
 }
 
-function loadRazorpayScript(): Promise<void> {
-  if (typeof window !== 'undefined' && (window as unknown as { Razorpay?: unknown }).Razorpay) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = RAZORPAY_SCRIPT;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Razorpay checkout'));
-    document.body.appendChild(script);
-  });
-}
-
 export function UpiPaymentSheet({
   order,
   open,
@@ -104,7 +89,6 @@ export function UpiPaymentSheet({
   const [formName, setFormName] = useState('');
   const [formMobile, setFormMobile] = useState('');
   const [creatingOrder, setCreatingOrder] = useState(false);
-  const [simulatingPayment, setSimulatingPayment] = useState(false);
   const [notifySubscribing, setNotifySubscribing] = useState(false);
   const [notifySubscribed, setNotifySubscribed] = useState(false);
 
@@ -129,41 +113,6 @@ export function UpiPaymentSheet({
     },
     [],
   );
-
-  const openRazorpayCheckout = async () => {
-    if (!order?.razorpayKeyId || !order?.orderId) return;
-    setSimulatingPayment(true);
-    try {
-      await loadRazorpayScript();
-      const Razorpay = (window as unknown as { Razorpay: new (o: Record<string, unknown>) => { open: () => void } }).Razorpay;
-      const amountPaise = Math.round(order.amount * 100);
-      const contact = customerMobileProp?.trim()
-        ? (customerMobileProp.trim().startsWith('+') ? customerMobileProp.trim() : `+91${customerMobileProp.trim()}`)
-        : undefined;
-      const rzp = new Razorpay({
-        key: order.razorpayKeyId,
-        order_id: order.orderId,
-        amount: amountPaise,
-        currency: 'INR',
-        name: order.venue?.name ?? 'Jukebox',
-        description: order.song?.title ?? 'Song request',
-        prefill: {
-          ...(customerNameProp?.trim() && { name: customerNameProp.trim() }),
-          ...(contact && { contact }),
-        },
-        handler: () => {
-          // Payment completed in Razorpay; show verifying until webhook/socket confirms and we have queue data
-          setStatus('verifying');
-          if (timerRef.current) clearTimeout(timerRef.current);
-        },
-      });
-      rzp.open();
-    } catch (err) {
-      console.error('Razorpay checkout error:', err);
-    } finally {
-      setSimulatingPayment(false);
-    }
-  };
 
   useEffect(() => {
     if (!open || !order || !canvasRef.current) return;
@@ -331,69 +280,21 @@ export function UpiPaymentSheet({
             >
               <canvas ref={canvasRef} className="rounded-xl block" />
             </a>
-            {order.testMode && (
-              <div className="w-full rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">
-                <p className="text-amber-800 text-sm font-medium">Test mode — simulate payment</p>
-                <p className="text-stone-600 text-xs">
-                  You cannot use real Google Pay / PhonePe. Click below to open Razorpay Checkout, then choose <strong>UPI</strong> and enter:
-                </p>
-                <div className="text-xs space-y-1">
-                  <p className="text-stone-900">
-                    <span className="text-stone-500">Success:</span>{' '}
-                    <code className="bg-white border border-stone-200 px-1.5 py-0.5 rounded text-sm">success@razorpay</code>
-                  </p>
-                  <p className="text-stone-900">
-                    <span className="text-stone-500">Failure:</span>{' '}
-                    <code className="bg-white border border-stone-200 px-1.5 py-0.5 rounded text-sm">failure@razorpay</code>
-                  </p>
-                </div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={openRazorpayCheckout}
-                  loading={simulatingPayment}
-                  disabled={!order.razorpayKeyId}
-                >
-                  Simulate payment (open Razorpay Checkout)
-                </Button>
-                <p className="text-stone-500 text-xs">
-                  In the checkout: select <strong>UPI</strong> → enter <strong>success@razorpay</strong> → pay. Webhook will confirm and close this sheet.
-                </p>
-                <details className="text-stone-500 text-xs">
-                  <summary className="cursor-pointer">Order ID / Dashboard</summary>
-                  <p className="mt-1 break-all">{order.orderId}</p>
-                  <a
-                    href="https://dashboard.razorpay.com/app/orders"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1 text-amber-300 hover:underline"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Razorpay Dashboard → Orders
-                  </a>
-                </details>
-              </div>
-            )}
-            {!order.testMode && (
-              <p className="text-stone-500 text-sm text-center">
-                Tap the QR code to open your UPI app
-              </p>
-            )}
-            {!order.testMode && (
-              <a
-                href={order.upiString}
-                className="w-full"
-                onClick={(e) => {
-                  window.location.href = order.upiString;
-                  e.preventDefault();
-                }}
-              >
-                <Button variant="primary" size="lg" className="w-full">
-                  Open UPI App
-                </Button>
-              </a>
-            )}
+            <p className="text-stone-500 text-sm text-center">
+              Tap the QR code to open your UPI app
+            </p>
+            <a
+              href={order.upiString}
+              className="w-full"
+              onClick={(e) => {
+                window.location.href = order.upiString;
+                e.preventDefault();
+              }}
+            >
+              <Button variant="primary" size="lg" className="w-full">
+                Open UPI App
+              </Button>
+            </a>
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-xs">Waiting for payment confirmation...</span>

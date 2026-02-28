@@ -36,6 +36,13 @@ Railway does **not** support defining multiple services in one config file. This
   | `YOUTUBE_API_KEY` | Your YouTube Data API key |
   | `FRONTEND_URL` | *(set after frontend is deployed; e.g. `https://your-frontend.up.railway.app`)* |
 
+- **Variables** (optional, for GTM onboarding emails via Resend):
+  | Variable | Value |
+  |----------|--------|
+  | `RESEND_API_KEY` | API key from [resend.com](https://resend.com) → API Keys. Required for "Send onboarding email" on the GTM page. |
+  | `GTM_FROM_EMAIL` | From address (e.g. `Jukebox <onboarding@muzobox.com>`). Default: `onboarding@resend.dev`. |
+  | `GTM_REPLY_TO` | Reply-to address for onboarding emails (e.g. `support@muzobox.com`). |
+
 - **Settings** → **Networking** → **Generate Domain**. Note the backend URL (e.g. `https://xxx.up.railway.app`).
 
 DB migrations (schema + super admin) run automatically on startup via `entrypoint.sh`.
@@ -44,11 +51,11 @@ DB migrations (schema + super admin) run automatically on startup via `entrypoin
 
 - **Add Service** → **GitHub Repo** → same repo (`bizzareus/ai-jukebox`).
 - **Settings** → **Root Directory** → set to **`frontend`** (this service uses `frontend/Dockerfile`). Config file path can be **`/frontend/railway.json`**.
-- **Variables**:
+- **Variables** (both required for webhooks and API to work):
 
   | Variable | Value |
   |----------|--------|
-  | `BACKEND_URL` | Backend URL for nginx proxy (e.g. `https://backend.up.railway.app`) — used at runtime by entrypoint. |
+  | `BACKEND_URL` | **Required.** Backend URL for nginx proxy (e.g. `https://your-backend.up.railway.app`). All requests to `muzobox.com/api/` and `/queue` are proxied here. If unset, nginx uses `http://localhost:3001` and you will see *Connection refused* for webhooks/API. |
   | `VITE_API_URL` | Backend URL (e.g. `https://ai-jukebox-backend-production.up.railway.app`) — **baked in at build time** so the frontend calls the backend directly. Set this if frontend and backend are on different domains (e.g. custom domain muzobox.com). After adding or changing it, **redeploy** to trigger a new build. |
 
 - **Settings** → **Networking** → **Generate Domain**. Note the frontend URL.

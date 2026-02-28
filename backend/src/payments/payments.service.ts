@@ -100,9 +100,11 @@ export class PaymentsService {
     );
 
     const keyId = this.configService.get<string>('RAZORPAY_KEY_ID') ?? '';
-    const testMode = keyId.startsWith('rzp_test_');
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
+    const testMode = !isProduction && keyId.startsWith('rzp_test_');
     this.logger.log(
-      `Created order ${order.id} for song "${song.title}" at venue ${venue.name}${testMode ? ' (test mode)' : ''}`,
+      `Created order ${order.id} for song "${song.title}" at venue ${venue.name}${testMode ? ' (test mode)' : isProduction ? ' (production)' : ''}`,
     );
 
     return {
@@ -110,8 +112,7 @@ export class PaymentsService {
       paymentId: payment.id,
       amount: effective,
       upiString,
-      testMode,
-      /** Only set in test mode; required to open Razorpay Checkout for simulating UPI (success@razorpay) */
+      testMode: isProduction ? false : testMode,
       razorpayKeyId: testMode ? keyId : undefined,
       song: { id: song.id, title: song.title, thumbnailUrl: song.thumbnailUrl },
       venue: { id: venue.id, name: venue.name },

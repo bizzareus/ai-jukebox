@@ -127,10 +127,13 @@ export class YoutubeService {
     return videoIds;
   }
 
-  /** Extract playlist ID from URL or return as-is if already ID (e.g. PL...). */
+  /** Extract playlist ID from URL (youtube.com or music.youtube.com) or return as-is if already ID (e.g. PL..., RDCL...). */
   private normalizePlaylistId(input: string): string | null {
     const trimmed = input.trim();
-    if (/^PL[\w-]+$/i.test(trimmed)) return trimmed;
+    if (!trimmed) return null;
+    // Raw ID: PL... (standard) or RDCL... (YouTube Music) or similar
+    if (/^[\w-]{10,}$/.test(trimmed)) return trimmed;
+    // URL: youtube.com/playlist?list=... or music.youtube.com/playlist?list=...
     const match = trimmed.match(/[?&]list=([^&\s]+)/);
     return match ? match[1] : null;
   }

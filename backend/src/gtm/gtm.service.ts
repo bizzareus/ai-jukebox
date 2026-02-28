@@ -60,54 +60,83 @@ export class GtmService {
     const { placeName, lat, lng } = this.parseMapsUrl(mapsUrl);
 
     try {
-      const findUrl = new URL(
-        'https://maps.googleapis.com/maps/api/place/findplacefromtext/json',
-      );
-      findUrl.searchParams.set('input', placeName);
-      findUrl.searchParams.set('inputtype', 'textquery');
-      findUrl.searchParams.set('fields', 'place_id');
-      findUrl.searchParams.set('key', apiKey);
+      // Places API (New): searchText (replaces legacy findplacefromtext + textsearch)
+      const searchBody: {
+        textQuery: string;
+        locationBias?: {
+          circle: {
+            center: { latitude: number; longitude: number };
+            radius: number;
+          };
+        };
+        pageSize?: number;
+      } = { textQuery: placeName, pageSize: 1 };
       if (lat != null && lng != null) {
-        findUrl.searchParams.set('locationbias', `circle:2000@${lat},${lng}`);
+        searchBody.locationBias = {
+          circle: { center: { latitude: lat, longitude: lng }, radius: 2000 },
+        };
       }
-      const findRes = await axios.get<{ candidates?: { place_id: string }[] }>(
-        findUrl.toString(),
-        {
-          timeout: 10000,
+      const searchRes = await axios.post<{
+        places?: Array<{
+          id?: string;
+          displayName?: { text?: string };
+          formattedAddress?: string;
+          nationalPhoneNumber?: string;
+          websiteUri?: string;
+        }>;
+      }>('https://places.googleapis.com/v1/places:searchText', searchBody, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask':
+            'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri',
         },
-      );
-      const placeId = findRes.data?.candidates?.[0]?.place_id;
+      });
+      const first = searchRes.data?.places?.[0];
+      const placeId = first?.id;
       if (!placeId) {
         this.logger.warn(`No place found for: ${placeName}`);
         return null;
       }
 
-      const detailsUrl = new URL(
-        'https://maps.googleapis.com/maps/api/place/details/json',
-      );
-      detailsUrl.searchParams.set('place_id', placeId);
-      detailsUrl.searchParams.set(
-        'fields',
-        'name,formatted_address,formatted_phone_number,website',
-      );
-      detailsUrl.searchParams.set('key', apiKey);
-      const detailsRes = await axios.get<{
-        result?: {
-          name?: string;
-          formatted_address?: string;
-          formatted_phone_number?: string;
-          website?: string;
-        };
-      }>(detailsUrl.toString(), { timeout: 10000 });
-      const r = detailsRes.data?.result;
-      if (!r) return null;
+      // If search already returned details, use them; otherwise fetch Place Details (New)
+      const name = first.displayName?.text ?? placeName;
+      let address = first.formattedAddress;
+      let phone = first.nationalPhoneNumber;
+      let website = first.websiteUri;
+      if (
+        address === undefined ||
+        phone === undefined ||
+        website === undefined
+      ) {
+        const detailsRes = await axios.get<{
+          displayName?: { text?: string };
+          formattedAddress?: string;
+          nationalPhoneNumber?: string;
+          websiteUri?: string;
+        }>(`https://places.googleapis.com/v1/places/${placeId}`, {
+          timeout: 10000,
+          headers: {
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask':
+              'displayName,formattedAddress,nationalPhoneNumber,websiteUri',
+          },
+        });
+        const d = detailsRes.data;
+        if (d) {
+          if (address === undefined) address = d.formattedAddress;
+          if (phone === undefined) phone = d.nationalPhoneNumber;
+          if (website === undefined) website = d.websiteUri;
+        }
+      }
 
       return {
         placeId,
-        name: r.name ?? placeName,
-        address: r.formatted_address,
-        phone: r.formatted_phone_number,
-        website: r.website,
+        name,
+        address,
+        phone,
+        website,
       };
     } catch (e) {
       this.logger.warn('Places API error', e);
@@ -151,26 +180,27 @@ export class GtmService {
     const fromEmail =
       this.configService.get<string>('GTM_FROM_EMAIL') ||
       this.configService.get<string>('RESEND_FROM') ||
-      'Jukebox <onboarding@resend.dev>';
+      'Jukebox <kartik@muzobox.com>';
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     const signupUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
     const html = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Jukebox for your venue</title></head>
+<head><meta charset="utf-8"><title>Music Jukebox for your venue</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333;">
   <h1 style="color:#E11D48;">Turn your venue into a jukebox</h1>
   <p>Hi,</p>
   <p>We’re <strong>Jukebox</strong> — a simple way to let your customers request and pay for songs at your bar or venue.</p>
+  <p>During non-DJ hours, your customers can play music on their own: they scan a QR code, pick a song, and pay (e.g. UPI). <strong>You earn from every song they play.</strong></p>
   <ul>
-    <li>Guests scan a QR code, pick a song, and pay (e.g. UPI).</li>
+    <li>Guests scan a QR code, pick a song, and pay.</li>
     <li>You control the queue and what’s playing from one dashboard.</li>
     <li>No hardware: use your existing speakers and phone.</li>
   </ul>
-  <p>Perfect for bars, cafes, and parties.</p>
+  <p>Sign up and start earning from your customers. Perfect for bars, cafes, and parties.</p>
   <p><a href="${signupUrl}/admin/login" style="display:inline-block;background:#E11D48;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">Get started — sign up here</a></p>
-  <p>If you have questions, just reply to this email. We’re happy to help.</p>
+  <p>If you have questions, reply to this email or call us at <a href="tel:+919999224767">+91 9999224767</a> to know more. We’re happy to help.</p>
   <p>Cheers,<br/>The Jukebox team</p>
 </body>
 </html>
@@ -180,23 +210,22 @@ export class GtmService {
       await this.saveLead(dto, 'skipped_no_provider');
       return { ok: false, error: 'Email provider not configured' };
     }
+    const replyTo = this.configService.get<string>('GTM_REPLY_TO');
+    const payload: Record<string, unknown> = {
+      from: fromEmail,
+      to: [dto.email],
+      subject: `Free Jukebox App for ${dto.placeName}`,
+      html,
+    };
+    if (replyTo) payload.reply_to = replyTo;
     try {
-      await axios.post(
-        'https://api.resend.com/emails',
-        {
-          from: fromEmail,
-          to: [dto.email],
-          subject: `Jukebox for ${dto.placeName}`,
-          html,
+      await axios.post('https://api.resend.com/emails', payload, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        },
-      );
+        timeout: 10000,
+      });
       await this.saveLead(dto, 'sent');
       this.logger.log(
         `Onboarding email sent to ${dto.email} for ${dto.placeName}`,
