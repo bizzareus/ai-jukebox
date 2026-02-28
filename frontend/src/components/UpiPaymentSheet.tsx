@@ -5,6 +5,7 @@ import { BottomSheet } from './ui/BottomSheet';
 import { Button } from './ui/Button';
 import { api } from '../services/api';
 import { getSocket, connectSocket } from '../services/socket';
+import * as notifications from '../services/notifications';
 import type { CreateOrderResponse } from '../types';
 
 interface UpiPaymentSheetProps {
@@ -104,6 +105,8 @@ export function UpiPaymentSheet({
   const [formMobile, setFormMobile] = useState('');
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [simulatingPayment, setSimulatingPayment] = useState(false);
+  const [notifySubscribing, setNotifySubscribing] = useState(false);
+  const [notifySubscribed, setNotifySubscribed] = useState(false);
 
   // Pre-fill name and mobile from localStorage when payment sheet opens for the form
   useEffect(() => {
@@ -419,6 +422,38 @@ export function UpiPaymentSheet({
                     : `Time is based on the total length of the ${confirmedPayload.position - 1} song${confirmedPayload.position === 2 ? '' : 's'} ahead of you.`}
                 </p>
               </div>
+            )}
+            {order && 'orderId' in order && !notifySubscribed && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setNotifySubscribing(true);
+                  try {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') return;
+                    const publicKey = await notifications.getVapidPublicKey();
+                    if (!publicKey) return;
+                    const sub = await notifications.subscribeForPush(publicKey);
+                    if (!sub) return;
+                    await api.post('/notifications/subscribe-customer', {
+                      orderId: order.orderId,
+                      subscription: notifications.subscriptionToPayload(sub),
+                    });
+                    setNotifySubscribed(true);
+                  } catch (e) {
+                    console.log('Notify subscribe failed', e);
+                  } finally {
+                    setNotifySubscribing(false);
+                  }
+                }}
+                disabled={notifySubscribing}
+                className="text-sm text-brand-600 hover:text-brand-700 font-medium disabled:opacity-50"
+              >
+                {notifySubscribing ? 'Subscribing…' : 'Notify me when my song plays'}
+              </button>
+            )}
+            {notifySubscribed && (
+              <p className="text-sm text-green-600">You'll get a notification when your song plays.</p>
             )}
           </div>
         )}

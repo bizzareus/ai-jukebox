@@ -84,7 +84,9 @@ export class VenuesService {
         Venue,
         'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'
       >
-    > = {};
+    > & {
+      settings?: Record<string, unknown>;
+    } = {};
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.slug !== undefined) updates.slug = dto.slug;
     if (dto.upiVpa !== undefined) updates.upiVpa = dto.upiVpa;
@@ -93,8 +95,11 @@ export class VenuesService {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
       updates.discountAmount = Math.min(dto.discountAmount, maxPrice);
     }
+    if (dto.logoUrl !== undefined) {
+      updates.settings = { ...(venue.settings ?? {}), logoUrl: dto.logoUrl };
+    }
     if (Object.keys(updates).length > 0) {
-      await this.venueRepository.update(id, updates);
+      await this.venueRepository.update(id, updates as Record<string, unknown>);
       const updated = await this.findById(id);
       if (updates.slug !== undefined) {
         const qrCodeUrl = await this.generateQrCode(updated.slug);
@@ -134,7 +139,7 @@ export class VenuesService {
     const dataUrl = await QRCode.toDataURL(url, {
       width: 400,
       margin: 2,
-      color: { dark: '#E11D48', light: '#0F0F0F' },
+      color: { dark: '#000000', light: '#ffffff' },
     });
     return dataUrl;
   }
