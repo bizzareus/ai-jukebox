@@ -21,9 +21,10 @@ export async function subscribeForPush(publicKey: string): Promise<PushSubscript
     return null;
   }
   const reg = await navigator.serviceWorker.ready;
+  const key = urlBase64ToUint8Array(publicKey);
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey),
+    applicationServerKey: key as BufferSource,
   });
   return sub;
 }

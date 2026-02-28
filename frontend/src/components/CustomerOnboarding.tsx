@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ListMusic, Search, IndianRupee, Sparkles } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -36,11 +36,7 @@ const steps = [
 ];
 
 export default function CustomerOnboarding() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    setVisible(!getOnboardingSeen());
-  }, []);
+  const [visible, setVisible] = useState(() => !getOnboardingSeen());
 
   const handleDismiss = () => {
     setOnboardingSeen();
