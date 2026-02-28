@@ -25,7 +25,11 @@ export class GtmService {
   ) {}
 
   /** Extract place name and optional lat,lng from a Google Maps URL. */
-  private parseMapsUrl(mapsUrl: string): { placeName: string; lat?: number; lng?: number } {
+  private parseMapsUrl(mapsUrl: string): {
+    placeName: string;
+    lat?: number;
+    lng?: number;
+  } {
     try {
       const url = new URL(mapsUrl);
       const path = url.pathname || '';
@@ -56,7 +60,9 @@ export class GtmService {
     const { placeName, lat, lng } = this.parseMapsUrl(mapsUrl);
 
     try {
-      const findUrl = new URL('https://maps.googleapis.com/maps/api/place/findplacefromtext/json');
+      const findUrl = new URL(
+        'https://maps.googleapis.com/maps/api/place/findplacefromtext/json',
+      );
       findUrl.searchParams.set('input', placeName);
       findUrl.searchParams.set('inputtype', 'textquery');
       findUrl.searchParams.set('fields', 'place_id');
@@ -64,16 +70,21 @@ export class GtmService {
       if (lat != null && lng != null) {
         findUrl.searchParams.set('locationbias', `circle:2000@${lat},${lng}`);
       }
-      const findRes = await axios.get<{ candidates?: { place_id: string }[] }>(findUrl.toString(), {
-        timeout: 10000,
-      });
+      const findRes = await axios.get<{ candidates?: { place_id: string }[] }>(
+        findUrl.toString(),
+        {
+          timeout: 10000,
+        },
+      );
       const placeId = findRes.data?.candidates?.[0]?.place_id;
       if (!placeId) {
         this.logger.warn(`No place found for: ${placeName}`);
         return null;
       }
 
-      const detailsUrl = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+      const detailsUrl = new URL(
+        'https://maps.googleapis.com/maps/api/place/details/json',
+      );
       detailsUrl.searchParams.set('place_id', placeId);
       detailsUrl.searchParams.set(
         'fields',
@@ -113,13 +124,17 @@ export class GtmService {
         maxContentLength: 500000,
       });
       const html = res.data || '';
-      const mailtoMatch = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+      const mailtoMatch = html.match(
+        /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      );
       if (mailtoMatch) return mailtoMatch[1].trim();
       const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
       const emails = html.match(emailRegex) || [];
       const filtered = emails.filter(
         (e) =>
-          !/^(noreply|no-reply|support@|admin@|donotreply|image|email|example|test@)/i.test(e) &&
+          !/^(noreply|no-reply|support@|admin@|donotreply|image|email|example|test@)/i.test(
+            e,
+          ) &&
           !e.endsWith('.png') &&
           !e.endsWith('.jpg'),
       );
@@ -130,13 +145,16 @@ export class GtmService {
     }
   }
 
-  async sendOnboarding(dto: SendOnboardingDto): Promise<{ ok: boolean; error?: string }> {
+  async sendOnboarding(
+    dto: SendOnboardingDto,
+  ): Promise<{ ok: boolean; error?: string }> {
     const fromEmail =
       this.configService.get<string>('GTM_FROM_EMAIL') ||
       this.configService.get<string>('RESEND_FROM') ||
       'Jukebox <onboarding@resend.dev>';
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    const signupUrl = this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
+    const signupUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
     const html = `
 <!DOCTYPE html>
 <html>
@@ -180,10 +198,14 @@ export class GtmService {
         },
       );
       await this.saveLead(dto, 'sent');
-      this.logger.log(`Onboarding email sent to ${dto.email} for ${dto.placeName}`);
+      this.logger.log(
+        `Onboarding email sent to ${dto.email} for ${dto.placeName}`,
+      );
       return { ok: true };
     } catch (e) {
-      const message = axios.isAxiosError(e) ? e.response?.data?.message : (e as Error).message;
+      const message = axios.isAxiosError(e)
+        ? e.response?.data?.message
+        : (e as Error).message;
       this.logger.warn('Send onboarding failed', e);
       await this.saveLead(dto, 'failed');
       return { ok: false, error: message ?? 'Failed to send email' };

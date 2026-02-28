@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { QueueItem, QueueItemStatus } from './queue-item.entity';
@@ -57,7 +52,9 @@ export class QueueService {
     });
 
     const saved = await this.queueRepository.save(item);
-    this.logger.log(`Enqueued song at position ${position} for venue ${payment.venueId}`);
+    this.logger.log(
+      `Enqueued song at position ${position} for venue ${payment.venueId}`,
+    );
 
     const queue = await this.getVenueQueue(payment.venueId);
     this.queueGateway.emitQueueUpdated(payment.venueId, queue);
@@ -71,7 +68,10 @@ export class QueueService {
 
     try {
       const song = await this.songsService.findById(payment.songId);
-      await this.notificationsService.notifyAdminNewSongQueued(payment.venueId, song.title);
+      await this.notificationsService.notifyAdminNewSongQueued(
+        payment.venueId,
+        song.title,
+      );
     } catch {
       // ignore
     }
@@ -157,7 +157,7 @@ export class QueueService {
     const playing = await this.getNowPlaying(venueId);
     if (playing) await this.markPlayed(playing.id);
 
-    let next = await this.queueRepository.findOne({
+    const next = await this.queueRepository.findOne({
       where: { venueId, status: QueueItemStatus.PENDING },
       relations: ['song'],
       order: { position: 'ASC' },
@@ -166,7 +166,9 @@ export class QueueService {
     if (!next) {
       const autoItem = await this.enqueueRandomFromPlaylist(venueId);
       if (autoItem) {
-        this.logger.log(`Auto-playing random playlist song for venue ${venueId}: ${autoItem.song?.title ?? autoItem.songId}`);
+        this.logger.log(
+          `Auto-playing random playlist song for venue ${venueId}: ${autoItem.song?.title ?? autoItem.songId}`,
+        );
         return this.markPlaying(autoItem.id);
       }
       this.logger.log(`No more songs in queue for venue ${venueId}`);
@@ -184,7 +186,10 @@ export class QueueService {
    * Returns the new queue item or null if venue has no playlist songs.
    */
   async enqueueRandomFromPlaylist(venueId: string): Promise<QueueItem | null> {
-    const recentSongIds = await this.getRecentlyPlayedSongIds(venueId, AUTO_PLAY_RECENT_HOURS);
+    const recentSongIds = await this.getRecentlyPlayedSongIds(
+      venueId,
+      AUTO_PLAY_RECENT_HOURS,
+    );
     const playlists = await this.playlistsService.findByVenue(venueId);
     const allSet = new Set<string>();
     const preferredSet = new Set<string>();
@@ -211,13 +216,16 @@ export class QueueService {
       status: QueueItemStatus.PENDING,
       position,
     });
-    const saved = await this.queueRepository.save(item) as QueueItem;
+    const saved = await this.queueRepository.save(item);
     const queue = await this.getVenueQueue(venueId);
     this.queueGateway.emitQueueUpdated(venueId, queue);
     return saved;
   }
 
-  private async getRecentlyPlayedSongIds(venueId: string, withinHours: number): Promise<Set<string>> {
+  private async getRecentlyPlayedSongIds(
+    venueId: string,
+    withinHours: number,
+  ): Promise<Set<string>> {
     const since = new Date();
     since.setHours(since.getHours() - withinHours);
     const rows = await this.queueRepository
@@ -279,7 +287,11 @@ export class QueueService {
    * - immediate: add at front, mark playing (current song if any is marked played).
    * - queue_next: add at end of queue.
    */
-  async replay(venueId: string, songId: string, mode: 'immediate' | 'queue_next'): Promise<QueueItem> {
+  async replay(
+    venueId: string,
+    songId: string,
+    mode: 'immediate' | 'queue_next',
+  ): Promise<QueueItem> {
     await this.songsService.findById(songId);
 
     if (mode === 'queue_next') {
@@ -294,7 +306,9 @@ export class QueueService {
       const saved = await this.queueRepository.save(item);
       const queue = await this.getVenueQueue(venueId);
       this.queueGateway.emitQueueUpdated(venueId, queue);
-      this.logger.log(`Replay queued: ${songId} at position ${position} for venue ${venueId}`);
+      this.logger.log(
+        `Replay queued: ${songId} at position ${position} for venue ${venueId}`,
+      );
       return saved;
     }
 
@@ -354,7 +368,10 @@ export class QueueService {
   }
 
   /** Most played songs at this venue (by play count from queue history). */
-  async getMostPlayedSongs(venueId: string, limit = 20): Promise<{ song: Song; playCount: number }[]> {
+  async getMostPlayedSongs(
+    venueId: string,
+    limit = 20,
+  ): Promise<{ song: Song; playCount: number }[]> {
     const raw = await this.queueRepository
       .createQueryBuilder('q')
       .select('q.song_id', 'songId')
@@ -372,12 +389,17 @@ export class QueueService {
     const songs = await this.songsService.findByIds(songIds);
     const byId = new Map(songs.map((s) => [s.id, s]));
     return raw
-      .map((r) => ({ song: byId.get(r.songId), playCount: parseInt(r.playCount, 10) }))
+      .map((r) => ({
+        song: byId.get(r.songId),
+        playCount: parseInt(r.playCount, 10),
+      }))
       .filter((x): x is { song: Song; playCount: number } => !!x.song);
   }
 
   /** For order-status API: get queue item and ETA by payment id (when payment is paid). */
-  async getQueueItemWithEtaByPaymentId(paymentId: string): Promise<{ id: string; position: number; eta: number } | null> {
+  async getQueueItemWithEtaByPaymentId(
+    paymentId: string,
+  ): Promise<{ id: string; position: number; eta: number } | null> {
     const item = await this.queueRepository.findOne({
       where: { paymentId },
       relations: ['song'],
@@ -392,14 +414,22 @@ export class QueueService {
   async getRecentCustomers(
     venueId: string,
     limit: number = 50,
-  ): Promise<{ customerName: string | null; customerMobile: string | null; lastSeen: string }[]> {
+  ): Promise<
+    {
+      customerName: string | null;
+      customerMobile: string | null;
+      lastSeen: string;
+    }[]
+  > {
     const rows = await this.queueRepository
       .createQueryBuilder('q')
       .select('q.customer_name', 'customerName')
       .addSelect('q.customer_mobile', 'customerMobile')
       .addSelect('MAX(q.queued_at)', 'lastSeen')
       .where('q.venue_id = :venueId', { venueId })
-      .andWhere('(q.customer_name IS NOT NULL OR q.customer_mobile IS NOT NULL)')
+      .andWhere(
+        '(q.customer_name IS NOT NULL OR q.customer_mobile IS NOT NULL)',
+      )
       .groupBy('q.customer_name')
       .addGroupBy('q.customer_mobile')
       .orderBy('lastSeen', 'DESC')
@@ -408,7 +438,10 @@ export class QueueService {
     return rows.map((r) => ({
       customerName: r.customerName ?? null,
       customerMobile: r.customerMobile ?? null,
-      lastSeen: r.lastSeen instanceof Date ? r.lastSeen.toISOString() : String(r.lastSeen),
+      lastSeen:
+        r.lastSeen instanceof Date
+          ? r.lastSeen.toISOString()
+          : String(r.lastSeen),
     }));
   }
 }

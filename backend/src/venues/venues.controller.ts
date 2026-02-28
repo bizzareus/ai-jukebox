@@ -1,4 +1,14 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { VenuesService } from './venues.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
@@ -69,22 +79,26 @@ export class VenuesController {
     @Param('id') venueId: string,
     @Query('limit') limit?: string,
   ) {
-    const n = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 50)) : 50;
+    const n = limit
+      ? Math.min(100, Math.max(1, parseInt(limit, 10) || 50))
+      : 50;
     return this.queueService.getRecentCustomers(venueId, n);
   }
 
   @Get(':slug/songs/popular')
   getPopularSongs(@Param('slug') slug: string) {
-    return this.venuesService.findBySlug(slug).then((venue) =>
-      this.playlistsService.getPopularSongsForVenue(venue.id, 20),
-    );
+    return this.venuesService
+      .findBySlug(slug)
+      .then((venue) =>
+        this.playlistsService.getPopularSongsForVenue(venue.id, 20),
+      );
   }
 
   @Get(':slug/songs/most-played')
   getMostPlayedSongs(@Param('slug') slug: string) {
-    return this.venuesService.findBySlug(slug).then((venue) =>
-      this.queueService.getMostPlayedSongs(venue.id, 20),
-    );
+    return this.venuesService
+      .findBySlug(slug)
+      .then((venue) => this.queueService.getMostPlayedSongs(venue.id, 20));
   }
 
   @Get(':slug')

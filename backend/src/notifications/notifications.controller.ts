@@ -16,11 +16,12 @@ export class NotificationsController {
 
   @Post('subscribe')
   @UseGuards(JwtAuthGuard)
-  subscribe(
-    @Body() dto: SubscribePushDto,
-    @CurrentAdmin() admin: Admin,
-  ) {
-    if (dto.venueId && admin.venueId !== dto.venueId && admin.role !== 'super_admin') {
+  subscribe(@Body() dto: SubscribePushDto, @CurrentAdmin() admin: Admin) {
+    if (
+      dto.venueId &&
+      admin.venueId !== dto.venueId &&
+      admin.role !== 'super_admin'
+    ) {
       dto.venueId = admin.venueId;
     }
     return this.notificationsService.subscribe(dto);

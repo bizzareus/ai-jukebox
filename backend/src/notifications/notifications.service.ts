@@ -7,7 +7,10 @@ import { SubscribePushDto } from './dto/subscribe-push.dto';
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private webPush: { setVapidDetails: (a: string, b: string, c: string) => void; sendNotification: (sub: unknown, payload: string) => Promise<unknown> } | null = null;
+  private webPush: {
+    setVapidDetails: (a: string, b: string, c: string) => void;
+    sendNotification: (sub: unknown, payload: string) => Promise<unknown>;
+  } | null = null;
 
   constructor(
     @InjectRepository(PushSubscription)
@@ -20,7 +23,9 @@ export class NotificationsService {
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
     if (!publicKey || !privateKey) {
-      this.logger.warn('VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY not set — push notifications disabled');
+      this.logger.warn(
+        'VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY not set — push notifications disabled',
+      );
       return;
     }
     try {
@@ -30,7 +35,10 @@ export class NotificationsService {
       this.webPush = wp;
       this.logger.log('Web push initialized');
     } catch (e) {
-      this.logger.warn('web-push not available — push notifications disabled', e);
+      this.logger.warn(
+        'web-push not available — push notifications disabled',
+        e,
+      );
     }
   }
 
@@ -39,7 +47,11 @@ export class NotificationsService {
   }
 
   async subscribe(dto: SubscribePushDto): Promise<{ ok: boolean }> {
-    if (!dto.subscription?.endpoint || !dto.subscription?.keys?.p256dh || !dto.subscription?.keys?.auth) {
+    if (
+      !dto.subscription?.endpoint ||
+      !dto.subscription?.keys?.p256dh ||
+      !dto.subscription?.keys?.auth
+    ) {
       return { ok: false };
     }
     if (dto.venueId) {
@@ -75,7 +87,10 @@ export class NotificationsService {
     return { ok: true };
   }
 
-  async notifyAdminNewSongQueued(venueId: string, songTitle: string): Promise<void> {
+  async notifyAdminNewSongQueued(
+    venueId: string,
+    songTitle: string,
+  ): Promise<void> {
     const subs = await this.subscriptionRepository.find({ where: { venueId } });
     if (subs.length === 0) return;
     const payload = JSON.stringify({
@@ -86,11 +101,16 @@ export class NotificationsService {
     await this.sendToSubscriptions(subs, payload);
   }
 
-  async notifyCustomerSongPlaying(orderId: string, songTitle: string): Promise<void> {
-    const sub = await this.subscriptionRepository.findOne({ where: { orderId } });
+  async notifyCustomerSongPlaying(
+    orderId: string,
+    songTitle: string,
+  ): Promise<void> {
+    const sub = await this.subscriptionRepository.findOne({
+      where: { orderId },
+    });
     if (!sub) return;
     const payload = JSON.stringify({
-      title: "Your song is now playing!",
+      title: 'Your song is now playing!',
       body: songTitle,
       tag: `order:${orderId}`,
     });

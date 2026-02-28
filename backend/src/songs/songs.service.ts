@@ -37,7 +37,7 @@ export class SongsService {
     const dbSongs = await this.songRepository
       .createQueryBuilder('s')
       .where(
-        'LOWER(s.title) LIKE LOWER(:term) OR LOWER(COALESCE(s.artist, \'\')) LIKE LOWER(:term) OR LOWER(COALESCE(s.channelName, \'\')) LIKE LOWER(:term)',
+        "LOWER(s.title) LIKE LOWER(:term) OR LOWER(COALESCE(s.artist, '')) LIKE LOWER(:term) OR LOWER(COALESCE(s.channelName, '')) LIKE LOWER(:term)",
         { term },
       )
       .orderBy('s.view_count', 'DESC')
@@ -82,7 +82,8 @@ export class SongsService {
     });
 
     const meta = await this.youtubeService.fetchMetadata(videoId);
-    if (!meta) throw new NotFoundException(`YouTube video not found: ${videoId}`);
+    if (!meta)
+      throw new NotFoundException(`YouTube video not found: ${videoId}`);
 
     const song = existing ?? this.songRepository.create();
     song.youtubeVideoId = meta.youtubeVideoId;

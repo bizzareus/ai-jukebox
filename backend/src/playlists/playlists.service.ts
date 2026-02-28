@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Playlist } from './playlist.entity';
@@ -26,10 +22,15 @@ export class PlaylistsService {
     private readonly songsService: SongsService,
   ) {}
 
-  async create(venueId: string | null, dto: CreatePlaylistDto): Promise<Playlist> {
+  async create(
+    venueId: string | null,
+    dto: CreatePlaylistDto,
+  ): Promise<Playlist> {
     const playlist = this.playlistRepository.create({ ...dto, venueId });
     const saved = await this.playlistRepository.save(playlist);
-    this.logger.log(`Created playlist: ${saved.name}${venueId ? ` for venue ${venueId}` : ' (global)'}`);
+    this.logger.log(
+      `Created playlist: ${saved.name}${venueId ? ` for venue ${venueId}` : ' (global)'}`,
+    );
     return saved;
   }
 
@@ -39,10 +40,14 @@ export class PlaylistsService {
       relations: ['playlistSongs', 'playlistSongs.song'],
     });
     if (!global) {
-      global = await this.create(null, { name: GLOBAL_PLAYLIST_NAME, description: 'Songs added by super admin; venues can add these to their playlists.' });
+      global = await this.create(null, {
+        name: GLOBAL_PLAYLIST_NAME,
+        description:
+          'Songs added by super admin; venues can add these to their playlists.',
+      });
       global = await this.findById(global.id);
     }
-    return global!;
+    return global;
   }
 
   async findGlobalPlaylist(): Promise<Playlist | null> {
@@ -96,7 +101,10 @@ export class PlaylistsService {
     await this.playlistSongRepository.delete({ playlistId, songId });
   }
 
-  async update(id: string, partial: Partial<CreatePlaylistDto>): Promise<Playlist> {
+  async update(
+    id: string,
+    partial: Partial<CreatePlaylistDto>,
+  ): Promise<Playlist> {
     await this.playlistRepository.update(id, partial);
     return this.findById(id);
   }
@@ -123,7 +131,9 @@ export class PlaylistsService {
   async addSongToGlobalByYoutubeUrl(youtubeUrl: string): Promise<PlaylistSong> {
     const videoId = this.parseYoutubeVideoId(youtubeUrl);
     if (!videoId) {
-      throw new NotFoundException('Invalid YouTube URL. Use e.g. https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID');
+      throw new NotFoundException(
+        'Invalid YouTube URL. Use e.g. https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID',
+      );
     }
     await this.songsService.upsertFromYoutube(videoId);
     const global = await this.getOrCreateGlobalPlaylist();
@@ -140,10 +150,15 @@ export class PlaylistsService {
    * Super admin: fetch all videos from a YouTube playlist and add them to the global library.
    * Accepts playlist ID (e.g. PLxxx) or URL with list= parameter.
    */
-  async addSongsToGlobalByPlaylistId(youtubePlaylistId: string): Promise<{ added: number; skipped: number; errors: string[] }> {
-    const videoIds = await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
+  async addSongsToGlobalByPlaylistId(
+    youtubePlaylistId: string,
+  ): Promise<{ added: number; skipped: number; errors: string[] }> {
+    const videoIds =
+      await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
     if (videoIds.length === 0) {
-      throw new NotFoundException('Playlist not found or has no videos. Use a playlist ID (e.g. PLxxx) or a URL with list=...');
+      throw new NotFoundException(
+        'Playlist not found or has no videos. Use a playlist ID (e.g. PLxxx) or a URL with list=...',
+      );
     }
     const global = await this.getOrCreateGlobalPlaylist();
     let added = 0;
@@ -170,7 +185,9 @@ export class PlaylistsService {
         this.logger.warn(`Failed to add video ${videoId}: ${msg}`);
       }
     }
-    this.logger.log(`Global playlist import: ${added} added, ${skipped} skipped, ${errors.length} errors`);
+    this.logger.log(
+      `Global playlist import: ${added} added, ${skipped} skipped, ${errors.length} errors`,
+    );
     return { added, skipped, errors };
   }
 

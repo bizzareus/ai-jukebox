@@ -23,7 +23,9 @@ export class VenuesService {
   ) {}
 
   async create(dto: CreateVenueDto, ownerId: string): Promise<Venue> {
-    const existing = await this.venueRepository.findOne({ where: { slug: dto.slug } });
+    const existing = await this.venueRepository.findOne({
+      where: { slug: dto.slug },
+    });
     if (existing) throw new ConflictException('Slug already taken');
 
     const venue = this.venueRepository.create({
@@ -47,7 +49,9 @@ export class VenuesService {
       dto.adminName ?? `${dto.name} Admin`,
     );
 
-    this.logger.log(`Created venue: ${final.name} [${final.slug}] with admin ${dto.adminEmail}`);
+    this.logger.log(
+      `Created venue: ${final.name} [${final.slug}] with admin ${dto.adminEmail}`,
+    );
     return final;
   }
 
@@ -70,10 +74,17 @@ export class VenuesService {
   async update(id: string, dto: UpdateVenueDto): Promise<Venue> {
     const venue = await this.findById(id);
     if (dto.slug !== undefined && dto.slug !== venue.slug) {
-      const existing = await this.venueRepository.findOne({ where: { slug: dto.slug } });
+      const existing = await this.venueRepository.findOne({
+        where: { slug: dto.slug },
+      });
       if (existing) throw new ConflictException('Slug already taken');
     }
-    const updates: Partial<Pick<Venue, 'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'>> & {
+    const updates: Partial<
+      Pick<
+        Venue,
+        'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'
+      >
+    > & {
       settings?: Record<string, unknown>;
     } = {};
     if (dto.name !== undefined) updates.name = dto.name;
@@ -128,7 +139,7 @@ export class VenuesService {
     const dataUrl = await QRCode.toDataURL(url, {
       width: 400,
       margin: 2,
-      color: { dark: '#E11D48', light: '#0F0F0F' },
+      color: { dark: '#000000', light: '#ffffff' },
     });
     return dataUrl;
   }

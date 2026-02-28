@@ -10,7 +10,12 @@ import { SongsModule } from '../songs/songs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([QueueItem, Payment]), PlaylistsModule, SongsModule, NotificationsModule],
+  imports: [
+    TypeOrmModule.forFeature([QueueItem, Payment]),
+    PlaylistsModule,
+    SongsModule,
+    NotificationsModule,
+  ],
   controllers: [QueueController],
   providers: [QueueService, QueueGateway],
   exports: [QueueService, QueueGateway],
