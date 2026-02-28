@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 import Razorpay from 'razorpay';
 import { validateWebhookSignature } from 'razorpay/dist/utils/razorpay-utils';
 import { Payment, PaymentStatus } from './payment.entity';
@@ -357,5 +358,31 @@ export class PaymentsService {
   ): string {
     const note = `Jukebox: ${songTitle}`.slice(0, 50);
     return `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(venueName)}&am=${amount}.00&tn=${encodeURIComponent(note)}&tr=${encodeURIComponent(orderId)}`;
+  }
+
+  /** Proxy a Razorpay QR image URL so the frontend can load it without CORS. Only allows rzp.io / api.razorpay.com. */
+  async proxyQrImage(
+    url: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const parsed = new URL(url);
+    const allowed =
+      parsed.hostname === 'rzp.io' ||
+      parsed.hostname.endsWith('.rzp.io') ||
+      parsed.hostname === 'api.razorpay.com';
+    if (!allowed) {
+      throw new BadRequestException('Invalid QR image URL');
+    }
+    const res = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      maxRedirects: 5,
+      timeout: 10000,
+    });
+    const rawContentType = res.headers['content-type'] as string | undefined;
+    const contentType =
+      (typeof rawContentType === 'string'
+        ? rawContentType.split(';')[0]?.trim()
+        : null) || 'image/png';
+    const buffer = Buffer.from(res.data);
+    return { buffer, contentType };
   }
 }

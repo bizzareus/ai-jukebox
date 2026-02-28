@@ -132,10 +132,23 @@ export function CroppedRazorpayQr({
 
   if (state.status === 'error') {
     return (
-      <div className={`flex flex-col gap-3 ${className}`}>
+      <div className={`flex flex-col items-center gap-3 ${className}`}>
         <p className="text-stone-500 text-sm text-center">
-          Open the link below to pay with your UPI app
+          Scan the QR code or open the link to pay with your UPI app
         </p>
+        <a
+          href={state.fallbackUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white block w-fit mx-auto focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+          aria-label="Open payment page"
+        >
+          <img
+            src={state.fallbackUrl}
+            alt="QR code - scan or tap to pay"
+            className="rounded-xl block max-w-[220px] h-auto"
+          />
+        </a>
         <a
           href={state.fallbackUrl}
           target="_blank"
@@ -150,12 +163,18 @@ export function CroppedRazorpayQr({
     );
   }
 
+  // Use extracted QR content (decodedUrl) as the link so the button opens the UPI intent
+  const upiLink = state.decodedUrl;
+
   return (
     <div className={`flex flex-col items-center gap-3 ${className}`}>
-      <button
-        type="button"
-        onClick={() => handleOpen(state.decodedUrl)}
-        className="rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors w-fit mx-auto focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+      <a
+        href={upiLink}
+        onClick={(e) => {
+          handleOpen(upiLink);
+          e.preventDefault();
+        }}
+        className="rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors w-fit mx-auto focus:outline-none focus:ring-2 focus:ring-brand-500/30 block"
         aria-label="Open UPI app to pay"
       >
         <img
@@ -163,18 +182,20 @@ export function CroppedRazorpayQr({
           alt="Scan or tap to pay with UPI"
           className="rounded-xl block max-w-[220px] h-auto"
         />
-      </button>
+      </a>
       <p className="text-stone-500 text-sm text-center">
         Scan the QR code or tap to open your UPI app
       </p>
-      <Button
-        variant="primary"
-        size="lg"
-        className="w-full"
-        onClick={() => handleOpen(state.decodedUrl)}
+      <a
+        href={upiLink}
+        className="w-full inline-flex items-center justify-center gap-2 font-semibold rounded-xl px-6 py-3.5 text-base bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-600/20 transition-all active:scale-95"
+        onClick={(e) => {
+          handleOpen(upiLink);
+          e.preventDefault();
+        }}
       >
         Pay with UPI
-      </Button>
+      </a>
     </div>
   );
 }

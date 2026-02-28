@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,6 +7,7 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -28,6 +30,18 @@ export class PaymentsController {
   @Get('order-status')
   orderStatus(@Query('orderId') orderId: string) {
     return this.paymentsService.getOrderStatus(orderId);
+  }
+
+  @Get('qr-image')
+  async proxyQrImage(
+    @Query('url') url: string | undefined,
+  ): Promise<StreamableFile> {
+    if (!url || typeof url !== 'string') {
+      throw new BadRequestException('Missing url');
+    }
+    const { buffer, contentType } =
+      await this.paymentsService.proxyQrImage(url);
+    return new StreamableFile(buffer, { type: contentType });
   }
 
   @Post('webhook')

@@ -92,6 +92,8 @@ export function UpiPaymentSheet({
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [notifySubscribing, setNotifySubscribing] = useState(false);
   const [notifySubscribed, setNotifySubscribed] = useState(false);
+  const [downloadedQrImageUrl, setDownloadedQrImageUrl] = useState<string | null>(null);
+  const [qrImageDownloadError, setQrImageDownloadError] = useState(false);
 
   // Pre-fill name and mobile from localStorage when payment sheet opens for the form
   useEffect(() => {
@@ -120,13 +122,6 @@ export function UpiPaymentSheet({
 
     setStatus('waiting');
     setConfirmedPayload(null);
-    if (order.upiString && canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, order.upiString, {
-        width: 220,
-        margin: 1,
-        color: { dark: '#000000', light: '#ffffff' },
-      });
-    }
 
     const socket = getSocket();
     connectSocket();
@@ -172,6 +167,58 @@ export function UpiPaymentSheet({
       if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
     };
   }, [open, order, applySuccess]);
+
+  // Draw QR on canvas when we have upiString; defer so ref is set after canvas mounts
+  useEffect(() => {
+    if (!open || !order?.upiString) return;
+    const id = requestAnimationFrame(() => {
+      if (canvasRef.current && order.upiString) {
+        QRCode.toCanvas(canvasRef.current, order.upiString, {
+          width: 220,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open, order?.upiString]);
+
+  const qrObjectUrlRef = useRef<string | null>(null);
+
+  // Download QR image via backend proxy so CroppedRazorpayQr gets same-origin data (avoids CORS)
+  useEffect(() => {
+    if (!open || !order?.qrImageUrl) {
+      setDownloadedQrImageUrl(null);
+      setQrImageDownloadError(false);
+      return;
+    }
+    setQrImageDownloadError(false);
+    let cancelled = false;
+    const url = order.qrImageUrl;
+    api
+      .getBlob(`/payments/qr-image?url=${encodeURIComponent(url)}`)
+      .then((blob) => {
+        if (cancelled) return;
+        if (qrObjectUrlRef.current) URL.revokeObjectURL(qrObjectUrlRef.current);
+        const objectUrl = URL.createObjectURL(blob);
+        qrObjectUrlRef.current = objectUrl;
+        setDownloadedQrImageUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrImageDownloadError(true);
+          setDownloadedQrImageUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (qrObjectUrlRef.current) {
+        URL.revokeObjectURL(qrObjectUrlRef.current);
+        qrObjectUrlRef.current = null;
+      }
+      setDownloadedQrImageUrl(null);
+    };
+  }, [open, order?.qrImageUrl]);
 
   // When we have confirmed payload, call onSuccess after delay (so user sees success screen)
   useEffect(() => {
@@ -303,7 +350,16 @@ export function UpiPaymentSheet({
                 </a>
               </>
             ) : order.qrImageUrl ? (
-              <CroppedRazorpayQr qrImageUrl={order.qrImageUrl} />
+              downloadedQrImageUrl ? (
+                <CroppedRazorpayQr qrImageUrl={downloadedQrImageUrl} />
+              ) : qrImageDownloadError ? (
+                <CroppedRazorpayQr qrImageUrl={order.qrImageUrl} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="w-10 h-10 text-stone-400 animate-spin" />
+                  <p className="text-stone-500 text-sm mt-2">Loading QR code...</p>
+                </div>
+              )
             ) : null}
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />
