@@ -208,6 +208,7 @@ export default function Library() {
                   <p className="text-stone-500 text-xs truncate">{r.channelName}</p>
                 </div>
                 <select
+                  aria-label="Add to playlist"
                   onChange={(e) => e.target.value && handleAddSong(e.target.value, r.youtubeVideoId)}
                   className="text-xs bg-white border border-surface-border rounded-lg px-2 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 max-w-[120px]"
                   defaultValue=""
@@ -286,6 +287,7 @@ export default function Library() {
                         checked={ps.song?.youtubeVideoId ? selectedGlobalVideoIds.has(ps.song.youtubeVideoId) : false}
                         onChange={() => ps.song?.youtubeVideoId && toggleSelectGlobal(ps.song.youtubeVideoId)}
                         className="w-4 h-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500/30"
+                        aria-label={`Select ${ps.song?.title ?? 'song'}`}
                       />
                     </label>
                     {ps.song?.thumbnailUrl ? (
@@ -300,6 +302,7 @@ export default function Library() {
                       <p className="text-stone-500 text-xs truncate">{ps.song?.channelName ?? ps.song?.youtubeVideoId}</p>
                     </div>
                     <select
+                      aria-label="Add to playlist"
                       onChange={(e) => {
                         const id = e.target.value;
                         if (id && ps.song?.youtubeVideoId) handleAddSong(id, ps.song.youtubeVideoId);
@@ -338,12 +341,14 @@ export default function Library() {
                 <p className="text-stone-500 text-xs">{playlist.playlistSongs?.length ?? 0} songs</p>
               </div>
               <button
+                type="button"
                 onClick={() => setExpandedPlaylist(expandedPlaylist === playlist.id ? null : playlist.id)}
                 className="text-stone-400 p-1"
+                aria-label={expandedPlaylist === playlist.id ? 'Collapse playlist' : 'Expand playlist'}
               >
                 {expandedPlaylist === playlist.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
-              <button onClick={() => handleDeletePlaylist(playlist.id)} className="text-stone-500 hover:text-red-600 p-1">
+              <button type="button" onClick={() => handleDeletePlaylist(playlist.id)} className="text-stone-500 hover:text-red-600 p-1" aria-label="Delete playlist">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -354,8 +359,10 @@ export default function Library() {
                     <img src={ps.song.thumbnailUrl ?? ''} alt={ps.song.title} className="w-8 h-8 rounded object-cover flex-shrink-0" />
                     <p className="flex-1 text-xs text-stone-900 truncate">{ps.song.title}</p>
                     <button
+                      type="button"
                       onClick={() => handleRemoveSong(playlist.id, ps.song.id)}
                       className="text-stone-500 hover:text-red-600 p-1"
+                      aria-label={`Remove ${ps.song.title} from playlist`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

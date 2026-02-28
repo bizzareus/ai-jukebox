@@ -56,6 +56,7 @@ export default function Analytics() {
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
           className="bg-white border border-surface-border rounded-xl px-3 py-2 text-stone-900 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+          aria-label="Select date"
         />
       </div>
 

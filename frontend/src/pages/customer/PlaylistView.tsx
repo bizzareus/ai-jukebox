@@ -63,8 +63,10 @@ export default function PlaylistView() {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface" />
 
         <button
+          type="button"
           onClick={() => navigate(-1)}
           className="absolute top-10 left-4 p-2 rounded-full bg-white/90 backdrop-blur-sm text-stone-900 shadow-md"
+          aria-label="Go back"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
