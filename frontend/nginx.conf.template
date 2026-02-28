@@ -3,7 +3,22 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Critical: do not cache entry document or service worker so deployments update immediately (especially on mobile/PWA)
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+    }
+    location = /sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+    }
+    # Hashed assets (Vite) can be cached long-term
+    location /assets/ {
+        add_header Cache-Control "max-age=31536000, immutable";
+    }
     location / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
         try_files $uri $uri/ /index.html;
     }
 
