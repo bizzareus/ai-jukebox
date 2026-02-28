@@ -13,6 +13,7 @@ import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { AddSongDto } from './dto/add-song.dto';
 import { AddSongByUrlDto } from './dto/add-song-by-url.dto';
 import { AddGlobalByPlaylistDto } from './dto/add-global-by-playlist.dto';
+import { AddSongByUrlDto } from './dto/add-song-by-url.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 
@@ -51,6 +52,48 @@ export class PlaylistsController {
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   removeSongFromGlobal(@Param('songId') songId: string) {
     return this.playlistsService.removeSongFromGlobalPlaylist(songId);
+  }
+
+  @Get('playlists/global-collections')
+  @UseGuards(JwtAuthGuard)
+  getGlobalCollections() {
+    return this.playlistsService.findGlobalCollections();
+  }
+
+  @Post('playlists/global-collections')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  createGlobalCollection(@Body() dto: CreatePlaylistDto) {
+    return this.playlistsService.createGlobalCollection(dto);
+  }
+
+  @Post('playlists/global-collections/:id/songs')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  addSongToGlobalCollectionByUrl(
+    @Param('id') id: string,
+    @Body() dto: AddSongByUrlDto,
+  ) {
+    return this.playlistsService.addSongToPlaylistByYoutubeUrl(id, dto.youtubeUrl);
+  }
+
+  @Post('playlists/global-collections/:id/songs/by-playlist')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  addYouTubePlaylistToGlobalCollection(
+    @Param('id') id: string,
+    @Body() dto: AddGlobalByPlaylistDto,
+  ) {
+    return this.playlistsService.addSongsToPlaylistByYoutubePlaylistId(
+      id,
+      dto.youtubePlaylistId,
+    );
+  }
+
+  @Delete('playlists/global-collections/:id/songs/:songId')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  removeSongFromGlobalCollection(
+    @Param('id') id: string,
+    @Param('songId') songId: string,
+  ) {
+    return this.playlistsService.removeSong(id, songId);
   }
 
   @Get('playlists/:id')

@@ -17,7 +17,8 @@ import { AddVenueAdminDto } from './dto/add-venue-admin.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
-import { Admin } from '../auth/admin.entity';
+import { Admin, AdminRole } from '../auth/admin.entity';
+import { ImportCollectionDto } from '../playlists/dto/import-collection.dto';
 import { PlaylistsService } from '../playlists/playlists.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -110,6 +111,24 @@ export class VenuesController {
   @UseGuards(JwtAuthGuard)
   refreshQr(@Param('id') id: string) {
     return this.venuesService.refreshQrCode(id);
+  }
+
+  @Post(':id/playlists/import-collection')
+  @UseGuards(JwtAuthGuard)
+  async importCollection(
+    @Param('id') venueId: string,
+    @Body() dto: ImportCollectionDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    const canImport =
+      admin.role === AdminRole.SUPER_ADMIN || admin.venueId === venueId;
+    if (!canImport) {
+      throw new ForbiddenException('You can only import to your own venue');
+    }
+    return this.playlistsService.importGlobalCollectionToVenue(
+      venueId,
+      dto.globalPlaylistId,
+    );
   }
 
   @Patch(':id')

@@ -75,11 +75,15 @@ export class SongsService {
     return results;
   }
 
-  /** Fetch full metadata from YouTube and upsert into songs table */
+  /** Fetch full metadata from YouTube and upsert into songs table. If song already exists in DB, return it without calling YouTube. */
   async upsertFromYoutube(videoId: string): Promise<Song> {
     const existing = await this.songRepository.findOne({
       where: { youtubeVideoId: videoId },
     });
+    if (existing) {
+      this.logger.debug(`Song already in DB: ${existing.title} [${videoId}], skipping YouTube fetch`);
+      return existing;
+    }
 
     const meta = await this.youtubeService.fetchMetadata(videoId);
     if (!meta)

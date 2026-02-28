@@ -13,6 +13,11 @@ const END_VIDEO_BEFORE_SECONDS = 25;
 /** Short fade duration before stopping (smoother transition to next) */
 const FADE_DURATION_SECONDS = 5;
 const FADE_TICK_MS = 250;
+/** Preload next song when this many seconds remain on current (reduces gap between tracks) */
+const PRELOAD_NEXT_BEFORE_SECONDS = 60;
+/** Crossfade duration when swapping to preloaded next (ms) */
+const CROSSFADE_DURATION_MS = 2500;
+const CROSSFADE_TICK_MS = 50;
 
 declare global {
   interface Window {
@@ -34,6 +39,7 @@ declare global {
   }
   interface YTPlayer {
     loadVideoById: (videoId: string) => void;
+    cueVideoById: (videoId: string) => void;
     playVideo: () => void;
     pauseVideo: () => void;
     stopVideo: () => void;
@@ -57,7 +63,11 @@ export default function DjMode() {
     queryFn: () => api.get<QueueItem[]>(`/queue/${venueId}/recent-plays?limit=10`),
     enabled: !!venueId,
   });
-  const playerRef = useRef<YTPlayer | null>(null);
+  const player0Ref = useRef<YTPlayer | null>(null);
+  const player1Ref = useRef<YTPlayer | null>(null);
+  /** Which slot (0 or 1) is currently visible/playing; the other is used to preload next */
+  const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
+  const nextPreloadedVideoIdRef = useRef<string | null>(null);
   const [ytReady, setYtReady] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
@@ -66,6 +76,9 @@ export default function DjMode() {
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeStartedRef = useRef(false);
+
+  const currentPlayerRef = activeSlot === 0 ? player0Ref : player1Ref;
+  const nextPlayerRef = activeSlot === 0 ? player1Ref : player0Ref;
 
   const nowPlaying = queue.find((i) => i.status === QueueItemStatus.PLAYING);
   const pending = queue.filter((i) => i.status === QueueItemStatus.PENDING);
@@ -95,7 +108,7 @@ export default function DjMode() {
     window.onYouTubeIframeAPIReady = () => setYtReady(true);
   }, []);
 
-  // Create/update player when nowPlaying changes
+  // Create/update player when nowPlaying changes; swap to preloaded next when available
   useEffect(() => {
     if (!ytReady || !nowPlaying) return;
 
@@ -108,12 +121,54 @@ export default function DjMode() {
       }
     };
 
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(nowPlaying.song.youtubeVideoId);
-      playerRef.current.playVideo();
-      ensureFullVolume(playerRef.current);
+    const preloadedMatches = nextPreloadedVideoIdRef.current === nowPlaying.song.youtubeVideoId && nextPlayerRef.current;
+
+    if (preloadedMatches) {
+      const current = currentPlayerRef.current;
+      const next = nextPlayerRef.current;
+      if (!current || !next) return;
+      nextPreloadedVideoIdRef.current = null;
+      // Crossfade: start next at 0, then ramp next up and current down
+      try {
+        if (next.setVolume) next.setVolume(0);
+        next.playVideo();
+      } catch (e) {
+        console.log('Crossfade start:', e);
+      }
+      const steps = Math.max(1, Math.floor(CROSSFADE_DURATION_MS / CROSSFADE_TICK_MS));
+      let step = 0;
+      const crossfadeId = setInterval(() => {
+        step += 1;
+        const nextVol = Math.min(100, Math.round((step / steps) * 100));
+        const currVol = Math.max(0, Math.round(100 - (step / steps) * 100));
+        try {
+          if (next.setVolume) next.setVolume(nextVol);
+          if (current.setVolume) current.setVolume(currVol);
+        } catch (_) {}
+        if (step >= steps) {
+          clearInterval(crossfadeId);
+          try {
+            current.stopVideo();
+            if (next.setVolume) next.setVolume(100);
+          } catch (_) {}
+          setActiveSlot(activeSlot === 0 ? 1 : 0);
+          const newNextId = pending[0]?.song?.youtubeVideoId ?? null;
+          if (newNextId && current.cueVideoById) {
+            current.cueVideoById(newNextId);
+            nextPreloadedVideoIdRef.current = newNextId;
+          }
+        }
+      }, CROSSFADE_TICK_MS);
+      return;
+    }
+
+    const elId = activeSlot === 0 ? 'yt-player' : 'yt-player-next';
+    if (currentPlayerRef.current) {
+      currentPlayerRef.current.loadVideoById(nowPlaying.song.youtubeVideoId);
+      currentPlayerRef.current.playVideo();
+      ensureFullVolume(currentPlayerRef.current);
     } else {
-      playerRef.current = new window.YT.Player('yt-player', {
+      currentPlayerRef.current = new window.YT.Player(elId, {
         videoId: nowPlaying.song.youtubeVideoId,
         playerVars: { autoplay: 1, controls: 1, rel: 0, modestbranding: 1 },
         events: {
@@ -128,7 +183,50 @@ export default function DjMode() {
         },
       });
     }
-  }, [ytReady, nowPlaying?.song?.youtubeVideoId, handleAdvance]);
+  }, [ytReady, nowPlaying?.song?.youtubeVideoId, activeSlot, pending.length, pending[0]?.song?.youtubeVideoId, handleAdvance, autoAdvance]);
+
+  // Preload next song when within PRELOAD_NEXT_BEFORE_SECONDS (e.g. 1 min) so we can swap without silence
+  useEffect(() => {
+    if (!ytReady || !nowPlaying || !pending.length) return;
+
+    const nextId = pending[0].song.youtubeVideoId;
+    if (nextPreloadedVideoIdRef.current === nextId) return;
+
+    const preloadNext = () => {
+      const p = currentPlayerRef.current;
+      if (!p || typeof p.getDuration !== 'function') return;
+      const duration = p.getDuration();
+      if (duration <= 0) return;
+      const current = p.getCurrentTime();
+      const remaining = duration - current;
+      if (remaining > PRELOAD_NEXT_BEFORE_SECONDS) return;
+      if (nextPreloadedVideoIdRef.current === nextId) return;
+
+      const nextElId = activeSlot === 0 ? 'yt-player-next' : 'yt-player';
+      if (nextPlayerRef.current) {
+        if (typeof nextPlayerRef.current.cueVideoById === 'function') {
+          nextPlayerRef.current.cueVideoById(nextId);
+          nextPreloadedVideoIdRef.current = nextId;
+        }
+      } else {
+        nextPlayerRef.current = new window.YT.Player(nextElId, {
+          videoId: nextId,
+          playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1 },
+          events: {
+            onStateChange: (e: { data: number }) => {
+              if (e.data === window.YT.PlayerState.ENDED && autoAdvance) {
+                handleAdvance();
+              }
+            },
+          },
+        });
+        nextPreloadedVideoIdRef.current = nextId;
+      }
+    };
+
+    const t = setInterval(preloadNext, 2000);
+    return () => clearInterval(t);
+  }, [ytReady, nowPlaying?.id, activeSlot, pending.length, pending[0]?.song?.youtubeVideoId]);
 
   // End video 20–30s before actual end: check every second, then short fade and stop (inspiration: stopVideo when duration - current <= 20)
   useEffect(() => {
@@ -170,7 +268,7 @@ export default function DjMode() {
     };
 
     progressIntervalRef.current = setInterval(() => {
-      const p = playerRef.current;
+      const p = currentPlayerRef.current;
       if (!p || typeof p.getDuration !== 'function') return;
       const duration = p.getDuration();
       if (duration <= 0) return;
@@ -230,10 +328,17 @@ export default function DjMode() {
         </label>
       </div>
 
-      {/* YouTube Player */}
+      {/* YouTube Player (two slots: one visible, one hidden for preloading next) */}
       {nowPlaying ? (
-        <div className="rounded-2xl overflow-hidden border border-surface-border bg-black aspect-video">
-          <div id="yt-player" className="w-full h-full" />
+        <div className="rounded-2xl overflow-hidden border border-surface-border bg-black aspect-video relative">
+          <div
+            id="yt-player"
+            className={`w-full h-full absolute inset-0 ${activeSlot === 0 ? 'z-10' : 'z-0 opacity-0 pointer-events-none'}`}
+          />
+          <div
+            id="yt-player-next"
+            className={`w-full h-full absolute inset-0 ${activeSlot === 1 ? 'z-10' : 'z-0 opacity-0 pointer-events-none'}`}
+          />
         </div>
       ) : (
         <div className="rounded-2xl border border-surface-border bg-white flex flex-col items-center justify-center aspect-video gap-3 text-stone-500 shadow-sm">

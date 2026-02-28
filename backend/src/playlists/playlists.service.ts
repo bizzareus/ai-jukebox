@@ -52,9 +52,102 @@ export class PlaylistsService {
 
   async findGlobalPlaylist(): Promise<Playlist | null> {
     return this.playlistRepository.findOne({
-      where: { venueId: IsNull() },
+      where: { venueId: IsNull(), name: GLOBAL_PLAYLIST_NAME },
       relations: ['playlistSongs', 'playlistSongs.song'],
     });
+  }
+
+  /** Super admin: list all global collections (playlists with no venue). */
+  async findGlobalCollections(): Promise<Playlist[]> {
+    return this.playlistRepository.find({
+      where: { venueId: IsNull() },
+      relations: ['playlistSongs', 'playlistSongs.song'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** Super admin: create a new global collection. */
+  async createGlobalCollection(dto: CreatePlaylistDto): Promise<Playlist> {
+    return this.create(null, dto);
+  }
+
+  /** Add songs from a YouTube playlist to any playlist (e.g. a global collection). */
+  async addSongsToPlaylistByYoutubePlaylistId(
+    playlistId: string,
+    youtubePlaylistId: string,
+  ): Promise<{ added: number; skipped: number; errors: string[] }> {
+    const playlist = await this.findById(playlistId);
+    const videoIds =
+      await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
+    if (videoIds.length === 0) {
+      throw new NotFoundException(
+        'Playlist not found or has no videos. Use a playlist ID (e.g. PLxxx) or a URL with list=...',
+      );
+    }
+    let added = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    for (const videoId of videoIds) {
+      try {
+        await this.songsService.upsertFromYoutube(videoId);
+        const hasSong = await this.playlistSongRepository
+          .createQueryBuilder('ps')
+          .innerJoin('ps.song', 's')
+          .where('ps.playlistId = :playlistId', { playlistId })
+          .andWhere('s.youtubeVideoId = :videoId', { videoId })
+          .getOne();
+        if (hasSong) {
+          skipped += 1;
+          continue;
+        }
+        await this.addSong(playlistId, { youtubeVideoId: videoId });
+        added += 1;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${videoId}: ${msg}`);
+        this.logger.warn(`Failed to add video ${videoId}: ${msg}`);
+      }
+    }
+    this.logger.log(
+      `Playlist ${playlistId} import: ${added} added, ${skipped} skipped, ${errors.length} errors`,
+    );
+    return { added, skipped, errors };
+  }
+
+  /** Venue admin: import a global collection as a new playlist at the venue (copy name, description, and all songs). */
+  async importGlobalCollectionToVenue(
+    venueId: string,
+    globalPlaylistId: string,
+  ): Promise<Playlist> {
+    const global = await this.findById(globalPlaylistId);
+    if (global.venueId != null) {
+      throw new NotFoundException('Playlist is not a global collection');
+    }
+    const newPlaylist = await this.create(venueId, {
+      name: global.name,
+      description: global.description ?? undefined,
+      coverImageUrl: global.coverImageUrl ?? undefined,
+    });
+    const songs = (global.playlistSongs ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+    for (let i = 0; i < songs.length; i++) {
+      const ps = songs[i];
+      if (ps.songId && ps.song) {
+        try {
+          await this.addSong(newPlaylist.id, {
+            youtubeVideoId: ps.song.youtubeVideoId,
+            sortOrder: i,
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Skip copying song ${ps.songId} to venue playlist: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    }
+    this.logger.log(
+      `Imported global collection "${global.name}" (${songs.length} songs) to venue ${venueId}`,
+    );
+    return this.findById(newPlaylist.id);
   }
 
   async findByVenue(venueId: string): Promise<Playlist[]> {
@@ -138,6 +231,22 @@ export class PlaylistsService {
     await this.songsService.upsertFromYoutube(videoId);
     const global = await this.getOrCreateGlobalPlaylist();
     return this.addSong(global.id, { youtubeVideoId: videoId });
+  }
+
+  /** Super admin: add song to a playlist (e.g. global collection) by YouTube URL. */
+  async addSongToPlaylistByYoutubeUrl(
+    playlistId: string,
+    youtubeUrl: string,
+  ): Promise<PlaylistSong> {
+    const videoId = this.parseYoutubeVideoId(youtubeUrl);
+    if (!videoId) {
+      throw new NotFoundException(
+        'Invalid YouTube URL. Use e.g. https://www.youtube.com/watch?v=VIDEO_ID or https://youtu.be/VIDEO_ID',
+      );
+    }
+    await this.findById(playlistId);
+    await this.songsService.upsertFromYoutube(videoId);
+    return this.addSong(playlistId, { youtubeVideoId: videoId });
   }
 
   /** Super admin: remove a song from the global playlist by song id. */

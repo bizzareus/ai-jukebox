@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Trash2, Music2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, Trash2, Music2, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -42,6 +42,14 @@ export default function Library() {
     queryFn: () => api.get<Playlist>('/playlists/global'),
     enabled: !!venueId,
   });
+
+  const { data: globalCollections = [] } = useQuery<Playlist[]>({
+    queryKey: ['playlists', 'global-collections'],
+    queryFn: () => api.get<Playlist[]>('/playlists/global-collections'),
+    enabled: !!venueId,
+  });
+
+  const [importingCollectionId, setImportingCollectionId] = useState<string | null>(null);
 
   const handleCreatePlaylist = async () => {
     if (!venueId || !newPlaylistName.trim()) return;
@@ -90,6 +98,19 @@ export default function Library() {
     if (!confirm('Delete this playlist?')) return;
     await api.delete(`/playlists/${id}`);
     queryClient.invalidateQueries({ queryKey: ['playlists', venueId] });
+  };
+
+  const handleImportCollection = async (globalPlaylistId: string) => {
+    if (!venueId) return;
+    setImportingCollectionId(globalPlaylistId);
+    try {
+      await api.post(`/venues/${venueId}/playlists/import-collection`, { globalPlaylistId });
+      queryClient.invalidateQueries({ queryKey: ['playlists', venueId] });
+    } catch (err) {
+      console.error('Import collection failed', err);
+    } finally {
+      setImportingCollectionId(null);
+    }
   };
 
   const globalSongs = useMemo(
@@ -187,6 +208,40 @@ export default function Library() {
           <Plus className="w-4 h-4" /> New collection
         </Button>
       </div>
+
+      {/* Import a global collection as-is */}
+      {globalCollections.length > 0 && (
+        <Card className="p-4 mb-5">
+          <h2 className="text-sm font-semibold text-stone-900 mb-2 flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Import collection
+          </h2>
+          <p className="text-stone-500 text-xs mb-3">
+            Add a full collection from the catalogue as a new playlist here. Songs are copied as-is.
+          </p>
+          <div className="flex flex-col gap-2">
+            {globalCollections.map((col) => (
+              <div
+                key={col.id}
+                className="flex items-center justify-between gap-3 py-2 border-b border-stone-100 last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-stone-900 text-sm font-medium truncate">{col.name}</p>
+                  <p className="text-stone-500 text-xs">{col.playlistSongs?.length ?? 0} songs</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleImportCollection(col.id)}
+                  loading={importingCollectionId === col.id}
+                >
+                  Import
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* YouTube Search */}
       <Card className="p-4 mb-5">
