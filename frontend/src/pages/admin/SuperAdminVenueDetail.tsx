@@ -3,11 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  Building2,
-  UserPlus,
   Pencil,
   IndianRupee,
-  Music2,
   Calendar,
   Users,
   Key,
