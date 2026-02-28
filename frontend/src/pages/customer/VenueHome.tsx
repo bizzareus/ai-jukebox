@@ -69,6 +69,39 @@ export default function VenueHome() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  // Dynamic meta/SEO for this bar's page (e.g. /3-wise-monkeys)
+  const defaultTitle = 'MuzoBox — Your bar jukebox';
+  const defaultDescription = 'Request songs at the bar. Browse playlists, pick a song, pay via UPI and hear it play. MuzoBox is the jukebox for your venue.';
+  useEffect(() => {
+    if (!venue) return;
+    const title = `${venue.name} | MuzoBox — Your bar jukebox`;
+    const description = `Request songs at ${venue.name}. Pick a song, pay via UPI, hear it play. Powered by MuzoBox, the jukebox app for your bar.`;
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+
+    document.title = title;
+
+    const setMeta = (selector: string, attr: string, value: string) => {
+      const el = document.querySelector(selector);
+      if (el) el.setAttribute(attr, value);
+    };
+    setMeta('meta[name="description"]', 'content', description);
+    setMeta('meta[property="og:title"]', 'content', title);
+    setMeta('meta[property="og:description"]', 'content', description);
+    setMeta('meta[property="og:url"]', 'content', url);
+    setMeta('meta[name="twitter:title"]', 'content', title);
+    setMeta('meta[name="twitter:description"]', 'content', description);
+
+    return () => {
+      document.title = defaultTitle;
+      setMeta('meta[name="description"]', 'content', defaultDescription);
+      setMeta('meta[property="og:title"]', 'content', defaultTitle);
+      setMeta('meta[property="og:description"]', 'content', defaultDescription);
+      setMeta('meta[property="og:url"]', 'content', '');
+      setMeta('meta[name="twitter:title"]', 'content', defaultTitle);
+      setMeta('meta[name="twitter:description"]', 'content', defaultDescription);
+    };
+  }, [venue?.id, venue?.name]);
+
   if (!venue) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface">
