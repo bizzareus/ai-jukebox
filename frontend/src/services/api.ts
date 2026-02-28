@@ -1,6 +1,7 @@
-// const BASE = "https://ai-jukebox-backend-production.up.railway.app/api";
-const BASE = import.meta.env.VITE_API_URL + "/api";
-console.log("BASE", BASE);
+// When VITE_API_URL is set (e.g. local dev), use it; otherwise use relative /api (same origin — e.g. nginx proxy on Railway)
+const BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, "")}/api`
+  : "/api";
 function getToken(): string | null {
   return localStorage.getItem("jukebox_token");
 }
