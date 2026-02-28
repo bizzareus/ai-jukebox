@@ -14,7 +14,7 @@ import { PaymentsService } from './payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
-import { Admin } from '../auth/admin.entity';
+import { Admin, AdminRole } from '../auth/admin.entity';
 
 @Controller('payments')
 export class PaymentsController {
@@ -42,11 +42,17 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   earnings(
     @CurrentAdmin() admin: Admin,
+    @Query('venueId') venueId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
+    const effectiveVenueId =
+      admin.role === AdminRole.SUPER_ADMIN && venueId ? venueId : admin.venueId;
+    if (!effectiveVenueId) {
+      return { payments: [], total: 0, count: 0 };
+    }
     return this.paymentsService.getVenueEarnings(
-      admin.venueId,
+      effectiveVenueId,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
     );

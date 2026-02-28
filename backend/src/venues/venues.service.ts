@@ -69,7 +69,14 @@ export class VenuesService {
 
   async update(id: string, dto: UpdateVenueDto): Promise<Venue> {
     const venue = await this.findById(id);
-    const updates: { pricePerSong?: number; discountAmount?: number } = {};
+    if (dto.slug !== undefined && dto.slug !== venue.slug) {
+      const existing = await this.venueRepository.findOne({ where: { slug: dto.slug } });
+      if (existing) throw new ConflictException('Slug already taken');
+    }
+    const updates: Partial<Pick<Venue, 'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'>> = {};
+    if (dto.name !== undefined) updates.name = dto.name;
+    if (dto.slug !== undefined) updates.slug = dto.slug;
+    if (dto.upiVpa !== undefined) updates.upiVpa = dto.upiVpa;
     if (dto.pricePerSong !== undefined) updates.pricePerSong = dto.pricePerSong;
     if (dto.discountAmount !== undefined) {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
@@ -77,7 +84,13 @@ export class VenuesService {
     }
     if (Object.keys(updates).length > 0) {
       await this.venueRepository.update(id, updates);
-      return this.findById(id);
+      const updated = await this.findById(id);
+      if (updates.slug !== undefined) {
+        const qrCodeUrl = await this.generateQrCode(updated.slug);
+        await this.venueRepository.update(id, { qrCodeUrl });
+        return this.findById(id);
+      }
+      return updated;
     }
     return venue;
   }

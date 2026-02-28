@@ -1,5 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { VenuesService } from './venues.service';
+import { AuthService } from '../auth/auth.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { AddVenueAdminDto } from './dto/add-venue-admin.dto';
@@ -14,6 +15,7 @@ import { QueueService } from '../queue/queue.service';
 export class VenuesController {
   constructor(
     private readonly venuesService: VenuesService,
+    private readonly authService: AuthService,
     private readonly playlistsService: PlaylistsService,
     private readonly queueService: QueueService,
   ) {}
@@ -22,6 +24,12 @@ export class VenuesController {
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   create(@Body() dto: CreateVenueDto, @CurrentAdmin() admin: Admin) {
     return this.venuesService.create(dto, admin.id);
+  }
+
+  @Get(':id/admins')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  getAdmins(@Param('id') venueId: string) {
+    return this.authService.findByVenueId(venueId);
   }
 
   @Post(':id/admins')
@@ -47,6 +55,22 @@ export class VenuesController {
   async current(@CurrentAdmin() admin: Admin) {
     if (!admin.venueId) throw new ForbiddenException('No venue assigned');
     return this.venuesService.findById(admin.venueId);
+  }
+
+  @Get('by-id/:id')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  findById(@Param('id') id: string) {
+    return this.venuesService.findById(id);
+  }
+
+  @Get(':id/recent-customers')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  getRecentCustomers(
+    @Param('id') venueId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const n = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 50)) : 50;
+    return this.queueService.getRecentCustomers(venueId, n);
   }
 
   @Get(':slug/songs/popular')

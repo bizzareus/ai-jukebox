@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, ExternalLink, UserPlus } from 'lucide-react';
+import { Building2, Plus, ExternalLink, UserPlus, Pencil, Settings } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -27,6 +28,14 @@ export default function SuperAdminVenues() {
   const [addAdminName, setAddAdminName] = useState('');
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [addAdminError, setAddAdminError] = useState('');
+  const [editVenueId, setEditVenueId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSlug, setEditSlug] = useState('');
+  const [editUpiVpa, setEditUpiVpa] = useState('');
+  const [editPricePerSong, setEditPricePerSong] = useState(100);
+  const [editDiscountAmount, setEditDiscountAmount] = useState(0);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const { data: venues = [] } = useQuery<Venue[]>({
     queryKey: ['venues', 'mine'],
@@ -65,6 +74,37 @@ export default function SuperAdminVenues() {
   };
 
   const frontendUrl = typeof window !== 'undefined' ? `${window.location.origin}` : '';
+
+  const openEdit = (v: Venue) => {
+    setEditVenueId(v.id);
+    setEditName(v.name);
+    setEditSlug(v.slug);
+    setEditUpiVpa(v.upiVpa);
+    setEditPricePerSong(v.pricePerSong);
+    setEditDiscountAmount(v.discountAmount ?? 0);
+    setEditError('');
+  };
+
+  const handleEdit = async (e: React.FormEvent, venueId: string) => {
+    e.preventDefault();
+    setEditError('');
+    setSavingEdit(true);
+    try {
+      await api.patch(`/venues/${venueId}`, {
+        name: editName.trim(),
+        slug: editSlug.trim(),
+        upiVpa: editUpiVpa.trim(),
+        pricePerSong: editPricePerSong,
+        discountAmount: editDiscountAmount,
+      });
+      queryClient.invalidateQueries({ queryKey: ['venues', 'mine'] });
+      setEditVenueId(null);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update venue');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleAddAdmin = async (e: React.FormEvent, venueId: string) => {
     e.preventDefault();
@@ -133,9 +173,25 @@ export default function SuperAdminVenues() {
               <Card className="p-4 flex items-center gap-3">
                 <Building2 className="w-8 h-8 text-brand-600 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-stone-900 truncate">{v.name}</p>
-                  <p className="text-stone-500 text-xs">{v.slug} · ₹{v.pricePerSong}/song</p>
+                  <Link to={`/admin/venues/${v.id}`} className="block hover:opacity-80">
+                    <p className="font-semibold text-stone-900 truncate">{v.name}</p>
+                    <p className="text-stone-500 text-xs">{v.slug} · ₹{v.pricePerSong}/song</p>
+                  </Link>
                 </div>
+                <Link to={`/admin/venues/${v.id}`}>
+                  <Button type="button" variant="outline" size="sm" title="Manage venue">
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => (editVenueId === v.id ? setEditVenueId(null) : openEdit(v))}
+                  title="Edit venue"
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -149,6 +205,23 @@ export default function SuperAdminVenues() {
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </Card>
+              {editVenueId === v.id && (
+                <Card className="p-4 mt-2 ml-0 border-t-0 rounded-t-none">
+                  <h3 className="font-semibold text-stone-900 mb-3">Edit {v.name}</h3>
+                  <form onSubmit={(e) => handleEdit(e, v.id)} className="flex flex-col gap-3">
+                    <Input label="Name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="My Bar" required />
+                    <Input label="Slug (URL)" value={editSlug} onChange={(e) => setEditSlug(e.target.value)} placeholder="my-bar" required />
+                    <Input label="UPI VPA" value={editUpiVpa} onChange={(e) => setEditUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
+                    <Input label="Price per song (₹)" type="number" value={String(editPricePerSong)} onChange={(e) => setEditPricePerSong(Number(e.target.value) || 100)} />
+                    <Input label="Discount amount (₹)" type="number" value={String(editDiscountAmount)} onChange={(e) => setEditDiscountAmount(Math.max(0, Number(e.target.value) || 0))} />
+                    {editError && <p className="text-red-600 text-sm">{editError}</p>}
+                    <div className="flex gap-2">
+                      <Button type="submit" loading={savingEdit}>Save</Button>
+                      <Button type="button" variant="outline" onClick={() => { setEditVenueId(null); setEditError(''); }}>Cancel</Button>
+                    </div>
+                  </form>
+                </Card>
+              )}
               {addAdminVenueId === v.id && (
                 <Card className="p-4 mt-2 ml-0 border-t-0 rounded-t-none">
                   <h3 className="font-semibold text-stone-900 mb-3">Add admin to {v.name}</h3>

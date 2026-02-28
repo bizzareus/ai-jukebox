@@ -14,6 +14,7 @@ import DjMode from './pages/admin/DjMode';
 import Library from './pages/admin/Library';
 import Analytics from './pages/admin/Analytics';
 import SuperAdminVenues from './pages/admin/SuperAdminVenues';
+import SuperAdminVenueDetail from './pages/admin/SuperAdminVenueDetail';
 import SuperAdminGlobalLibrary from './pages/admin/SuperAdminGlobalLibrary';
 import Settings from './pages/admin/Settings';
 import Landing from './pages/Landing';
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />
             <Route path="venues" element={<SuperAdminVenues />} />
+            <Route path="venues/:venueId" element={<SuperAdminVenueDetail />} />
             <Route path="global-library" element={<SuperAdminGlobalLibrary />} />
           </Route>
 

@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -93,6 +95,38 @@ export class AuthService {
     admin.passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.adminRepository.save(admin);
     this.logger.log(`Password changed for admin: ${admin.email}`);
+  }
+
+  /** List venue admins (no password). Super admin only. */
+  async findByVenueId(venueId: string): Promise<Omit<Admin, 'passwordHash'>[]> {
+    const admins = await this.adminRepository.find({
+      where: { venueId },
+      order: { createdAt: 'ASC' },
+    });
+    return admins.map(({ passwordHash: _, ...a }) => a);
+  }
+
+  /** Set password for a venue admin. Super admin only. */
+  async setAdminPassword(adminId: string, newPassword: string): Promise<void> {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    if (!admin) throw new NotFoundException('Admin not found');
+    if (admin.role !== AdminRole.VENUE_ADMIN) {
+      throw new ForbiddenException('Can only reset password for venue admins');
+    }
+    admin.passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.adminRepository.save(admin);
+    this.logger.log(`Password reset for venue admin: ${admin.email}`);
+  }
+
+  /** Delete a venue admin. Super admin only. Cannot delete super_admins. */
+  async deleteVenueAdmin(adminId: string): Promise<void> {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    if (!admin) throw new NotFoundException('Admin not found');
+    if (admin.role === AdminRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Cannot delete a super admin');
+    }
+    await this.adminRepository.remove(admin);
+    this.logger.log(`Deleted venue admin: ${admin.email}`);
   }
 
   private buildTokenResponse(admin: Admin) {

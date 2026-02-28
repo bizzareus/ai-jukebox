@@ -98,6 +98,12 @@ export default function Library() {
     [globalPlaylist?.playlistSongs],
   );
 
+  /** Playlists that don't already contain this song (by YouTube video id). */
+  const playlistsWithoutSong = (youtubeVideoId: string) =>
+    playlists.filter(
+      (p) => !p.playlistSongs?.some((ps) => ps.song?.youtubeVideoId === youtubeVideoId),
+    );
+
   const globalLibraryFiltered = useMemo(() => {
     const q = globalLibrarySearch.trim().toLowerCase();
     if (!q) return globalSongs;
@@ -178,7 +184,7 @@ export default function Library() {
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display text-2xl font-bold text-stone-900">Library</h1>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4" /> New
+          <Plus className="w-4 h-4" /> New collection
         </Button>
       </div>
 
@@ -209,15 +215,22 @@ export default function Library() {
                 </div>
                 <select
                   aria-label="Add to playlist"
-                  onChange={(e) => e.target.value && handleAddSong(e.target.value, r.youtubeVideoId)}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (id) handleAddSong(id, r.youtubeVideoId);
+                    e.currentTarget.value = '';
+                  }}
                   className="text-xs bg-white border border-surface-border rounded-lg px-2 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 max-w-[120px]"
                   defaultValue=""
                   disabled={addingTo === r.youtubeVideoId}
                 >
                   <option value="" disabled>Add to...</option>
-                  {playlists.map((p) => (
+                  {playlistsWithoutSong(r.youtubeVideoId).map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
+                  {playlistsWithoutSong(r.youtubeVideoId).length === 0 && (
+                    <option value="" disabled>Already in all collections</option>
+                  )}
                 </select>
               </div>
             ))}
@@ -306,15 +319,21 @@ export default function Library() {
                       onChange={(e) => {
                         const id = e.target.value;
                         if (id && ps.song?.youtubeVideoId) handleAddSong(id, ps.song.youtubeVideoId);
+                        e.currentTarget.value = '';
                       }}
                       className="text-xs bg-white border border-surface-border rounded-lg px-2 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-500/30 max-w-[120px]"
-                      defaultValue=""
+                      value=""
                       disabled={addingTo === ps.song?.youtubeVideoId}
                     >
                       <option value="" disabled>Add to...</option>
-                      {playlists.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
+                      {ps.song?.youtubeVideoId
+                        ? playlistsWithoutSong(ps.song.youtubeVideoId).map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))
+                        : null}
+                      {ps.song?.youtubeVideoId && playlistsWithoutSong(ps.song.youtubeVideoId).length === 0 && (
+                        <option value="" disabled>Already in all collections</option>
+                      )}
                     </select>
                   </div>
                 ))}
