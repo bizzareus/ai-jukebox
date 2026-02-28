@@ -10,6 +10,7 @@ import {
   Key,
   Trash2,
   ExternalLink,
+  LogIn,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
@@ -77,6 +78,9 @@ export default function SuperAdminVenueDetail() {
   const [resetPwConfirm, setResetPwConfirm] = useState('');
   const [resettingPw, setResettingPw] = useState(false);
   const [resetPwError, setResetPwError] = useState('');
+
+  const [loginLinkLoadingId, setLoginLinkLoadingId] = useState<string | null>(null);
+  const [loginLinkCopiedForId, setLoginLinkCopiedForId] = useState<string | null>(null);
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -194,6 +198,21 @@ export default function SuperAdminVenueDetail() {
     }
   };
 
+  const handleGetLoginLink = async (adminId: string) => {
+    setLoginLinkLoadingId(adminId);
+    setLoginLinkCopiedForId(null);
+    try {
+      const { loginLink } = await api.post<{ loginLink: string }>('/auth/login-link', { adminId });
+      await navigator.clipboard.writeText(loginLink);
+      setLoginLinkCopiedForId(adminId);
+      setTimeout(() => setLoginLinkCopiedForId(null), 2000);
+    } catch (err: unknown) {
+      console.log(err instanceof Error ? err.message : 'Failed to create login link');
+    } finally {
+      setLoginLinkLoadingId(null);
+    }
+  };
+
   const frontendUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   if (venueLoading || !venue) {
@@ -268,6 +287,22 @@ export default function SuperAdminVenueDetail() {
                       <p className="text-stone-500 text-sm">{a.email}</p>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleGetLoginLink(a.id)}
+                        title={loginLinkCopiedForId === a.id ? 'Copied!' : 'Copy login link (opens in new tab as this bar)'}
+                        disabled={loginLinkLoadingId === a.id}
+                      >
+                        {loginLinkLoadingId === a.id ? (
+                          <span className="text-xs">…</span>
+                        ) : loginLinkCopiedForId === a.id ? (
+                          'Copied!'
+                        ) : (
+                          <LogIn className="w-4 h-4" />
+                        )}
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"

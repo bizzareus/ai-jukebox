@@ -19,6 +19,7 @@ import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { InviteTokenService } from '../gtm/invite-token.service';
 import { VenuesService } from '../venues/venues.service';
+import { LoginLinkTokenService } from './login-link-token.service';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,7 @@ export class AuthService {
     private readonly inviteTokenService: InviteTokenService,
     @Inject(forwardRef(() => VenuesService))
     private readonly venuesService: VenuesService,
+    private readonly loginLinkTokenService: LoginLinkTokenService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -184,6 +186,40 @@ export class AuthService {
     }
     await this.adminRepository.remove(admin);
     this.logger.log(`Deleted venue admin: ${admin.email}`);
+  }
+
+  /** Generate a presigned login link for a venue admin. Super admin only. */
+  async createLoginLink(adminId: string): Promise<{ loginLink: string }> {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    if (!admin) throw new NotFoundException('Admin not found');
+    if (admin.role !== AdminRole.VENUE_ADMIN) {
+      throw new ForbiddenException('Login links can only be created for venue admins');
+    }
+    const token = this.loginLinkTokenService.sign(admin.id);
+    const baseUrl = process.env.FRONTEND_URL || 'https://muzobox.com';
+    const loginLink = `${baseUrl}/admin/login?token=${encodeURIComponent(token)}`;
+    this.logger.log(`Login link created for venue admin ${admin.email}`);
+    return { loginLink };
+  }
+
+  /** Exchange a login-link token for a session. Only for venue admins. */
+  async loginWithToken(token: string) {
+    const adminId = this.loginLinkTokenService.verify(token);
+    if (!adminId) {
+      throw new UnauthorizedException('Invalid or expired login link. Request a new one.');
+    }
+    const admin = await this.adminRepository.findOne({
+      where: { id: adminId },
+      relations: ['venue'],
+    });
+    if (!admin) {
+      throw new UnauthorizedException('Invalid or expired login link.');
+    }
+    if (admin.role !== AdminRole.VENUE_ADMIN) {
+      throw new ForbiddenException('This link cannot be used for super admins.');
+    }
+    this.logger.log(`Login via link: ${admin.email}`);
+    return this.buildTokenResponse(admin);
   }
 
   private buildTokenResponse(admin: Admin) {

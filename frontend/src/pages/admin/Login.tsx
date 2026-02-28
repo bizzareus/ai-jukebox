@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Music2, Mail, Lock } from 'lucide-react';
 import { authService } from '../../services/auth';
 import { Button } from '../../components/ui/Button';
@@ -7,10 +7,37 @@ import { Input } from '../../components/ui/Input';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const token = searchParams.get('token');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    setError('');
+    setLoading(true);
+    authService
+      .loginWithToken(token)
+      .then((res) => {
+        if (cancelled) return;
+        setSearchParams({}, { replace: true });
+        navigate(res.admin.role === 'super_admin' ? '/admin/venues' : '/admin/dashboard');
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Invalid or expired link');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, navigate, setSearchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +52,14 @@ export default function AdminLogin() {
       setLoading(false);
     }
   };
+
+  if (token && loading) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-5">
+        <div className="text-stone-500 text-sm">Logging you in…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-5">

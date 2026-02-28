@@ -35,6 +35,13 @@ export const authService = {
     return res;
   },
 
+  async loginWithToken(token: string): Promise<AuthResponse> {
+    const res = await api.post<AuthResponse>('/auth/login-with-token', { token });
+    localStorage.setItem('jukebox_token', res.accessToken);
+    localStorage.setItem('jukebox_admin', JSON.stringify(res.admin));
+    return res;
+  },
+
   async me(): Promise<Admin> {
     return api.get<Admin>('/auth/me');
   },

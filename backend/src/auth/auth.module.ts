@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AdminsController } from './admins.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { LoginLinkTokenService } from './login-link-token.service';
 import { GtmModule } from '../gtm/gtm.module';
 import { VenuesModule } from '../venues/venues.module';
 
@@ -29,7 +30,7 @@ import { VenuesModule } from '../venues/venues.module';
     forwardRef(() => VenuesModule),
   ],
   controllers: [AuthController, AdminsController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, LoginLinkTokenService],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
