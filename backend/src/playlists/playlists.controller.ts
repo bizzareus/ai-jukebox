@@ -42,7 +42,9 @@ export class PlaylistsController {
   @Post('playlists/global/songs/by-playlist')
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   addSongsToGlobalByPlaylist(@Body() dto: AddGlobalByPlaylistDto) {
-    return this.playlistsService.addSongsToGlobalByPlaylistId(dto.youtubePlaylistId);
+    return this.playlistsService.addSongsToGlobalByPlaylistId(
+      dto.youtubePlaylistId,
+    );
   }
 
   @Delete('playlists/global/songs/:songId')

@@ -1,4 +1,11 @@
-import { IsEmail, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateVenueDto {
   @IsString()

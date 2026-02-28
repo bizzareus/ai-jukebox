@@ -35,8 +35,14 @@ export class QueueController {
 
   @Get(':venueId/recent-plays')
   @UseGuards(JwtAuthGuard)
-  getRecentPlays(@Param('venueId') venueId: string, @Query('limit') limit?: string) {
-    return this.queueService.getRecentPlays(venueId, limit ? parseInt(limit, 10) : 10);
+  getRecentPlays(
+    @Param('venueId') venueId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.queueService.getRecentPlays(
+      venueId,
+      limit ? parseInt(limit, 10) : 10,
+    );
   }
 
   @Post('replay')

@@ -9,7 +9,11 @@ import { PlaylistsModule } from '../playlists/playlists.module';
 import { SongsModule } from '../songs/songs.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([QueueItem, Payment]), PlaylistsModule, SongsModule],
+  imports: [
+    TypeOrmModule.forFeature([QueueItem, Payment]),
+    PlaylistsModule,
+    SongsModule,
+  ],
   controllers: [QueueController],
   providers: [QueueService, QueueGateway],
   exports: [QueueService, QueueGateway],

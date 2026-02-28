@@ -50,7 +50,11 @@ export class QueueItem {
   @Column({ name: 'customer_mobile', nullable: true })
   customerMobile: string;
 
-  @Column({ type: 'enum', enum: QueueItemStatus, default: QueueItemStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: QueueItemStatus,
+    default: QueueItemStatus.PENDING,
+  })
   status: QueueItemStatus;
 
   @Column({ name: 'position', type: 'int' })

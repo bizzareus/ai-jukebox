@@ -8,7 +8,12 @@ import { QueueModule } from '../queue/queue.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Venue]), PlaylistsModule, QueueModule, AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([Venue]),
+    PlaylistsModule,
+    QueueModule,
+    AuthModule,
+  ],
   controllers: [VenuesController],
   providers: [VenuesService],
   exports: [VenuesService],

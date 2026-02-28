@@ -27,7 +27,9 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.adminRepository.findOne({ where: { email: dto.email } });
+    const existing = await this.adminRepository.findOne({
+      where: { email: dto.email },
+    });
     if (existing) {
       throw new ConflictException('Email already in use');
     }
@@ -47,12 +49,17 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const admin = await this.adminRepository.findOne({ where: { email: dto.email } });
+    const admin = await this.adminRepository.findOne({
+      where: { email: dto.email },
+    });
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordMatch = await bcrypt.compare(dto.password, admin.passwordHash);
+    const passwordMatch = await bcrypt.compare(
+      dto.password,
+      admin.passwordHash,
+    );
     if (!passwordMatch) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -62,10 +69,18 @@ export class AuthService {
   }
 
   async me(adminId: string) {
-    return this.adminRepository.findOne({ where: { id: adminId }, relations: ['venue'] });
+    return this.adminRepository.findOne({
+      where: { id: adminId },
+      relations: ['venue'],
+    });
   }
 
-  async createVenueAdmin(venueId: string, email: string, password: string, name: string) {
+  async createVenueAdmin(
+    venueId: string,
+    email: string,
+    password: string,
+    name: string,
+  ) {
     const existing = await this.adminRepository.findOne({ where: { email } });
     if (existing) {
       throw new ConflictException('Email already in use');
@@ -84,7 +99,9 @@ export class AuthService {
   }
 
   async changePassword(adminId: string, dto: ChangePasswordDto) {
-    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    const admin = await this.adminRepository.findOne({
+      where: { id: adminId },
+    });
     if (!admin) {
       throw new UnauthorizedException('Admin not found');
     }
@@ -108,7 +125,9 @@ export class AuthService {
 
   /** Set password for a venue admin. Super admin only. */
   async setAdminPassword(adminId: string, newPassword: string): Promise<void> {
-    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    const admin = await this.adminRepository.findOne({
+      where: { id: adminId },
+    });
     if (!admin) throw new NotFoundException('Admin not found');
     if (admin.role !== AdminRole.VENUE_ADMIN) {
       throw new ForbiddenException('Can only reset password for venue admins');
@@ -120,7 +139,9 @@ export class AuthService {
 
   /** Delete a venue admin. Super admin only. Cannot delete super_admins. */
   async deleteVenueAdmin(adminId: string): Promise<void> {
-    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    const admin = await this.adminRepository.findOne({
+      where: { id: adminId },
+    });
     if (!admin) throw new NotFoundException('Admin not found');
     if (admin.role === AdminRole.SUPER_ADMIN) {
       throw new ForbiddenException('Cannot delete a super admin');
