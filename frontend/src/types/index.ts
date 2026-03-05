@@ -93,6 +93,8 @@ export interface CreateOrderResponse {
   testMode?: boolean;
   /** Set in test mode only; use to open Razorpay Checkout for simulating UPI payment */
   razorpayKeyId?: string;
+  /** Razorpay Order ID for "Pay Online" (opens Checkout / payment page). */
+  razorpayOrderId?: string;
   song: Pick<Song, 'id' | 'title' | 'thumbnailUrl'>;
   venue: Pick<Venue, 'id' | 'name'>;
 }

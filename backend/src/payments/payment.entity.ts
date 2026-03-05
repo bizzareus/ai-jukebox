@@ -37,6 +37,14 @@ export class Payment {
   razorpayQrId: string | null;
 
   @Column({
+    name: 'razorpay_order_id',
+    type: 'varchar',
+    unique: true,
+    nullable: true,
+  })
+  razorpayOrderId: string | null;
+
+  @Column({
     name: 'razorpay_payment_id',
     type: 'varchar',
     nullable: true,

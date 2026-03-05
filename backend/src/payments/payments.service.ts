@@ -17,22 +17,42 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { VenuesService } from '../venues/venues.service';
 import { SongsService } from '../songs/songs.service';
 import { QueueService } from '../queue/queue.service';
+import type {
+  RazorpayWebhookPayload,
+  RazorpayPaymentEntity,
+  RazorpayOrderCreateResponse,
+  RazorpayQrFetchResponse,
+  RazorpayQrFetchPaymentsResponse,
+} from './types/razorpay.types';
+import type { CreateOrderResult } from './interfaces/create-order-result.interface';
+import {
+  QR_CLOSE_BY_SECONDS,
+  RAZORPAY_RECEIPT_MAX_LENGTH,
+  RAZORPAY_DESCRIPTION_MAX_LENGTH,
+  QR_FETCH_PAYMENTS_COUNT,
+  PROXY_QR_IMAGE_TIMEOUT_MS,
+} from './payments.constants';
 
-/** Razorpay webhook payload (payment.captured or qr_code.credited). */
-interface RazorpayWebhookPayload {
-  event: string;
-  payload?: {
-    payment?: { entity?: RazorpayPaymentEntity };
-    qr_code?: { entity?: { id: string } };
-  };
-  payment?: { entity?: RazorpayPaymentEntity };
-  qr_code?: { entity?: { id: string } };
+export interface OrderStatusResult {
+  status: 'created' | 'paid';
+  queueItem?: { id: string; position: number; eta: number };
 }
 
-/** Razorpay payment entity from webhook. */
-interface RazorpayPaymentEntity {
-  id: string;
-  order_id: string;
+export interface VenueEarningsResult {
+  payments: Array<{
+    id: string;
+    amount: number;
+    createdAt: Date;
+    songId: string;
+    songTitle: string | null;
+    qrid: string | null;
+    customerName: string | null;
+    customerMobile: string | null;
+    status: PaymentStatus;
+    razorpayPaymentId: string | null;
+  }>;
+  total: number;
+  count: number;
 }
 
 @Injectable()
@@ -55,7 +75,7 @@ export class PaymentsService {
     });
   }
 
-  /** Effective price after flat discount (min 1). */
+  /** Effective price after flat discount (minimum ₹1). */
   private effectivePrice(venue: {
     pricePerSong: number;
     discountAmount?: number;
@@ -64,115 +84,233 @@ export class PaymentsService {
     return Math.max(1, venue.pricePerSong - discount);
   }
 
-  async createOrder(dto: CreateOrderDto) {
-    const venue = await this.venuesService.findById(dto.venueId);
-    const song = await this.songsService.findById(dto.songId);
+  /** Truncate string to max length for Razorpay fields. */
+  private truncate(value: string, maxLength: number): string {
+    return value.slice(0, maxLength);
+  }
 
-    const effective = this.effectivePrice(venue);
-    const amountPaise = effective * 100;
+  async createOrder(dto: CreateOrderDto): Promise<CreateOrderResult> {
+    const [venue, song] = await Promise.all([
+      this.venuesService.findById(dto.venueId),
+      this.songsService.findById(dto.songId),
+    ]);
 
-    // Create Razorpay UPI QR (single-use, fixed amount); payment goes through Razorpay and triggers qr_code.credited webhook
-    const closeBy = Math.floor(Date.now() / 1000) + 600; // 10 min
-    const qr = await this.razorpay.qrCode.create({
-      type: 'upi_qr',
-      name: `Jukebox ${venue.name}`.slice(0, 255),
-      usage: 'single_use',
-      fixed_amount: true,
-      payment_amount: amountPaise,
-      description: `${venue.name} - ${song.title}`.slice(0, 255),
-      close_by: closeBy,
-    } as Parameters<Razorpay['qrCode']['create']>[0]);
+    const amount = this.effectivePrice(venue);
+    const amountPaise = amount * 100;
 
-    const payment = this.paymentRepository.create({
-      venueId: venue.id,
-      songId: song.id,
-      customerName: dto.customerName,
-      customerMobile: dto.customerMobile,
-      razorpayQrId: qr.id,
-      amount: effective,
-      status: PaymentStatus.CREATED,
-    });
+    const qr = await this.createRazorpayQr(venue.name, song.title, amountPaise);
+    const payment = await this.persistPayment(
+      venue.id,
+      song.id,
+      dto.customerName,
+      dto.customerMobile,
+      qr.id,
+      amount,
+    );
 
-    await this.paymentRepository.save(payment);
-
-    // Fetch QR to get image_content (UPI string) so frontend can draw its own QR and "Open UPI App" link
-    let upiString = '';
-    try {
-      const fetched = await this.razorpay.qrCode.fetch(qr.id);
-      const qrWithContent = fetched as { image_content?: string };
-      if (qrWithContent.image_content) {
-        upiString = qrWithContent.image_content;
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Could not fetch QR image_content for ${qr.id}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    const razorpayOrderId = await this.createRazorpayOrderForCheckout(
+      payment,
+      amountPaise,
+    );
+    const upiString = await this.fetchQrImageContent(qr.id);
+    const razorpayKeyId =
+      this.configService.get<string>('RAZORPAY_KEY_ID') ?? undefined;
 
     this.logger.log(
-      `Created QR ${qr.id} for song "${song.title}" at venue ${venue.name}`,
+      `Created payment ${payment.id} (QR ${qr.id}) for "${song.title}" at ${venue.name}`,
     );
 
     return {
       orderId: payment.id,
       paymentId: payment.id,
-      amount: effective,
+      amount,
       upiString,
       qrImageUrl: upiString ? undefined : qr.image_url,
-      song: { id: song.id, title: song.title, thumbnailUrl: song.thumbnailUrl },
+      razorpayOrderId: razorpayOrderId ?? undefined,
+      razorpayKeyId,
+      song: {
+        id: song.id,
+        title: song.title,
+        thumbnailUrl: song.thumbnailUrl,
+      },
       venue: { id: venue.id, name: venue.name },
     };
+  }
+
+  private async createRazorpayQr(
+    venueName: string,
+    songTitle: string,
+    amountPaise: number,
+  ): Promise<{ id: string; image_url?: string }> {
+    const closeBy = Math.floor(Date.now() / 1000) + QR_CLOSE_BY_SECONDS;
+    const qr = await this.razorpay.qrCode.create({
+      type: 'upi_qr',
+      name: this.truncate(
+        `Jukebox ${venueName}`,
+        RAZORPAY_DESCRIPTION_MAX_LENGTH,
+      ),
+      usage: 'single_use',
+      fixed_amount: true,
+      payment_amount: amountPaise,
+      description: this.truncate(
+        `${venueName} - ${songTitle}`,
+        RAZORPAY_DESCRIPTION_MAX_LENGTH,
+      ),
+      close_by: closeBy,
+    } as Parameters<Razorpay['qrCode']['create']>[0]);
+    return qr as { id: string; image_url?: string };
+  }
+
+  private async persistPayment(
+    venueId: string,
+    songId: string,
+    customerName: string | undefined,
+    customerMobile: string | undefined,
+    razorpayQrId: string,
+    amount: number,
+  ): Promise<Payment> {
+    const payment = this.paymentRepository.create({
+      venueId,
+      songId,
+      customerName,
+      customerMobile,
+      razorpayQrId,
+      amount,
+      status: PaymentStatus.CREATED,
+    });
+    return this.paymentRepository.save(payment);
+  }
+
+  private async createRazorpayOrderForCheckout(
+    payment: Payment,
+    amountPaise: number,
+  ): Promise<string | null> {
+    try {
+      const order = await this.razorpay.orders.create({
+        amount: amountPaise,
+        currency: 'INR',
+        receipt: this.truncate(payment.id, RAZORPAY_RECEIPT_MAX_LENGTH),
+      });
+      const orderResponse = order as RazorpayOrderCreateResponse;
+      if (orderResponse?.id) {
+        payment.razorpayOrderId = orderResponse.id;
+        await this.paymentRepository.save(payment);
+        return orderResponse.id;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Razorpay Order creation failed for payment ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return null;
+  }
+
+  private async fetchQrImageContent(qrId: string): Promise<string> {
+    try {
+      const fetched = await this.razorpay.qrCode.fetch(qrId);
+      const withContent = fetched as RazorpayQrFetchResponse;
+      return withContent?.image_content ?? '';
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch QR image_content for ${qrId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return '';
+    }
   }
 
   async handleWebhook(
     rawBody: Buffer | undefined,
     signature: string | undefined,
-  ) {
+  ): Promise<{ received: boolean }> {
     this.logger.log(
       `Webhook received: rawBody=${rawBody ? `${rawBody.length} bytes` : 'MISSING'}, signature=${signature ? 'present' : 'MISSING'}`,
     );
 
+    this.validateWebhookInputs(rawBody, signature);
+    const payload = this.parseWebhookPayload(rawBody!);
+    this.validateWebhookSignature(
+      payload,
+      rawBody!.toString(),
+      signature!.trim(),
+    );
+
+    const event = payload.event;
+    this.logger.log(`Razorpay webhook: ${event}`);
+
+    if (event === 'payment.captured') {
+      const entity = this.getPaymentEntityFromPayload(payload);
+      if (!entity) {
+        this.logger.warn('Razorpay webhook: payment entity missing');
+        return { received: true };
+      }
+      await this.handlePaymentCaptured(entity);
+      return { received: true };
+    }
+
+    if (event === 'qr_code.credited') {
+      const qrEntity =
+        payload?.payload?.qr_code?.entity ?? payload?.qr_code?.entity;
+      const paymentEntity = this.getPaymentEntityFromPayload(payload);
+      if (!qrEntity?.id) {
+        this.logger.warn(
+          'Razorpay webhook: qr_code entity missing in qr_code.credited',
+        );
+        return { received: true };
+      }
+      await this.handleQrCodeCredited(qrEntity.id, paymentEntity?.id);
+      return { received: true };
+    }
+
+    return { received: true };
+  }
+
+  private validateWebhookInputs(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+  ): void {
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
       this.logger.error(
-        'Webhook raw body missing. Ensure Nest is started with rawBody: true and no middleware parses body before the webhook.',
+        'Webhook raw body missing. Start Nest with rawBody: true and do not parse body before webhook.',
       );
       throw new BadRequestException('Webhook body required');
     }
-
     if (!signature?.trim()) {
       this.logger.warn('Webhook x-razorpay-signature header missing');
       throw new BadRequestException('Missing x-razorpay-signature header');
     }
-
-    const webhookSecret = this.configService.get<string>(
-      'RAZORPAY_WEBHOOK_SECRET',
-    );
-    if (!webhookSecret) {
+    const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
+    if (!secret) {
       this.logger.error('RAZORPAY_WEBHOOK_SECRET is not set');
       throw new BadRequestException('Webhook not configured');
     }
+  }
 
-    const rawBodyString = rawBody.toString();
-    let payload: RazorpayWebhookPayload;
+  private parseWebhookPayload(rawBody: Buffer): RazorpayWebhookPayload {
     try {
-      payload = JSON.parse(rawBodyString) as RazorpayWebhookPayload;
+      return JSON.parse(rawBody.toString()) as RazorpayWebhookPayload;
     } catch {
       throw new BadRequestException('Invalid webhook JSON');
     }
+  }
 
-    // QR code webhooks require body with escaped slashes for signature validation (https://razorpay.com/docs/payments/qr-codes/subscribe-to-webhooks/)
+  private validateWebhookSignature(
+    payload: RazorpayWebhookPayload,
+    rawBodyString: string,
+    signature: string,
+  ): void {
+    const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET')!;
     const bodyForValidation = payload.event?.startsWith('qr_code.')
       ? JSON.stringify(payload).replace(/\//g, '\\/')
       : rawBodyString;
     try {
       const isValid = validateWebhookSignature(
         bodyForValidation,
-        signature.trim(),
-        webhookSecret,
+        signature,
+        secret,
       );
       if (!isValid) {
         this.logger.warn(
-          'Webhook signature mismatch. Check that RAZORPAY_WEBHOOK_SECRET matches the secret in Razorpay Dashboard → Webhooks.',
+          'Webhook signature mismatch. Verify RAZORPAY_WEBHOOK_SECRET matches Razorpay Dashboard → Webhooks.',
         );
         throw new BadRequestException('Invalid webhook signature');
       }
@@ -183,52 +321,12 @@ export class PaymentsService {
       );
       throw new BadRequestException('Invalid webhook signature');
     }
+  }
 
-    const event = payload.event;
-
-    this.logger.log(`Razorpay webhook: ${event}`);
-
-    if (event === 'payment.captured') {
-      const paymentEntity: RazorpayPaymentEntity | undefined =
-        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
-      if (!paymentEntity) {
-        this.logger.warn(
-          'Razorpay webhook: payment entity missing from payload',
-        );
-        return { received: true };
-      }
-      try {
-        await this.handlePaymentCaptured(paymentEntity);
-      } catch (err) {
-        this.logger.error(
-          `Payment captured handling failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        throw err;
-      }
-    }
-
-    if (event === 'qr_code.credited') {
-      const qrEntity =
-        payload?.payload?.qr_code?.entity ?? payload?.qr_code?.entity;
-      const paymentEntity: RazorpayPaymentEntity | undefined =
-        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
-      if (!qrEntity?.id) {
-        this.logger.warn(
-          'Razorpay webhook: qr_code entity missing from qr_code.credited payload',
-        );
-        return { received: true };
-      }
-      try {
-        await this.handleQrCodeCredited(qrEntity.id, paymentEntity?.id);
-      } catch (err) {
-        this.logger.error(
-          `qr_code.credited handling failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        throw err;
-      }
-    }
-
-    return { received: true };
+  private getPaymentEntityFromPayload(
+    payload: RazorpayWebhookPayload,
+  ): RazorpayPaymentEntity | undefined {
+    return payload?.payload?.payment?.entity ?? payload?.payment?.entity;
   }
 
   private async handleQrCodeCredited(
@@ -242,61 +340,61 @@ export class PaymentsService {
       this.logger.warn(`No payment found for QR code ${qrCodeId}`);
       return null;
     }
+    return this.markPaymentPaidAndEnqueue(
+      payment,
+      razorpayPaymentId,
+      `QR code credited: ${qrCodeId}`,
+    );
+  }
+
+  private async handlePaymentCaptured(
+    paymentEntity: RazorpayPaymentEntity,
+  ): Promise<Payment | null> {
+    const { order_id: qrIdOrOrderId, id: razorpayPaymentId } = paymentEntity;
+    if (!qrIdOrOrderId || !razorpayPaymentId) {
+      this.logger.warn(
+        'Razorpay webhook: missing order_id or payment id in entity',
+      );
+      return null;
+    }
+
+    const payment = await this.paymentRepository.findOne({
+      where: [
+        { razorpayQrId: qrIdOrOrderId },
+        { razorpayOrderId: qrIdOrOrderId },
+      ],
+    });
+    if (!payment) {
+      this.logger.warn(`No payment found for QR/order ${qrIdOrOrderId}`);
+      return null;
+    }
+
+    return this.markPaymentPaidAndEnqueue(
+      payment,
+      razorpayPaymentId,
+      `Payment captured: ${razorpayPaymentId} for ${qrIdOrOrderId}`,
+    );
+  }
+
+  /**
+   * Mark payment as PAID, optionally set razorpayPaymentId, save, and enqueue.
+   * Idempotent: no-op if already PAID.
+   */
+  private async markPaymentPaidAndEnqueue(
+    payment: Payment,
+    razorpayPaymentId: string | undefined,
+    logContext: string,
+  ): Promise<Payment | null> {
     if (payment.status === PaymentStatus.PAID) {
-      this.logger.log(`QR ${qrCodeId} already processed — skipping`);
+      this.logger.log(`${logContext} — already processed, skipping`);
       return payment;
     }
     if (razorpayPaymentId) payment.razorpayPaymentId = razorpayPaymentId;
     payment.status = PaymentStatus.PAID;
     const saved = await this.paymentRepository.save(payment);
     this.logger.log(
-      `QR code credited: ${qrCodeId} -> payment ${saved.id} (Razorpay pay id: ${razorpayPaymentId ?? 'n/a'})`,
+      `${logContext} → payment ${saved.id} (Razorpay pay id: ${razorpayPaymentId ?? 'n/a'})`,
     );
-    try {
-      await this.queueService.enqueueFromPayment(saved.id);
-    } catch (err) {
-      this.logger.error(
-        `Enqueue from payment failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      throw err;
-    }
-    return saved;
-  }
-
-  private async handlePaymentCaptured(
-    paymentEntity: RazorpayPaymentEntity,
-  ): Promise<Payment | null> {
-    const qrIdOrOrderId = paymentEntity.order_id;
-    const razorpayPaymentId = paymentEntity.id;
-
-    if (!qrIdOrOrderId || !razorpayPaymentId) {
-      this.logger.warn(
-        `Razorpay webhook: missing order_id or payment id in entity`,
-      );
-      return null;
-    }
-
-    const payment = await this.paymentRepository.findOne({
-      where: { razorpayQrId: qrIdOrOrderId },
-    });
-
-    if (!payment) {
-      this.logger.warn(`No payment found for QR/order ${qrIdOrOrderId}`);
-      return null;
-    }
-
-    if (payment.status === PaymentStatus.PAID) {
-      this.logger.log(`QR ${qrIdOrOrderId} already processed — skipping`);
-      return payment;
-    }
-
-    payment.razorpayPaymentId = razorpayPaymentId;
-    payment.status = PaymentStatus.PAID;
-    const saved = await this.paymentRepository.save(payment);
-    this.logger.log(
-      `Payment captured: ${razorpayPaymentId} for QR ${qrIdOrOrderId}`,
-    );
-
     try {
       await this.queueService.enqueueFromPayment(saved.id);
     } catch (err) {
@@ -309,16 +407,14 @@ export class PaymentsService {
   }
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
-    return this.paymentRepository.findOne({
-      where: { id: orderId },
-    });
+    return this.paymentRepository.findOne({ where: { id: orderId } });
   }
 
-  /** Public order status for polling: status + queue item when paid. Accepts Razorpay orderId or our paymentId (UUID). For QR flow, fetches payments from Razorpay when not yet paid (see https://razorpay.com/docs/api/qr-codes/fetch-payments/). */
-  async getOrderStatus(orderIdOrPaymentId: string): Promise<{
-    status: 'created' | 'paid';
-    queueItem?: { id: string; position: number; eta: number };
-  }> {
+  /**
+   * Order status for polling. Accepts our paymentId (UUID) or Razorpay order id.
+   * For QR flow, may sync payment status from Razorpay if not yet paid.
+   */
+  async getOrderStatus(orderIdOrPaymentId: string): Promise<OrderStatusResult> {
     const payment = await this.paymentRepository.findOne({
       where: { id: orderIdOrPaymentId },
     });
@@ -327,41 +423,13 @@ export class PaymentsService {
     }
 
     if (payment.status !== PaymentStatus.PAID && payment.razorpayQrId) {
-      const qrId: string = payment.razorpayQrId;
-      try {
-        const res = (await this.razorpay.qrCode.fetchAllPayments(qrId, {
-          count: 10,
-        })) as { items?: Array<{ id?: string; status?: string }> };
-        const items = res?.items ?? [];
-        const captured = items.find((p) => p.status === 'captured');
-        const razorpayPaymentId =
-          captured && typeof captured.id === 'string' ? captured.id : null;
-        if (razorpayPaymentId) {
-          payment.razorpayPaymentId = razorpayPaymentId;
-          payment.status = PaymentStatus.PAID;
-          await this.paymentRepository.save(payment);
-          this.logger.log(
-            `QR ${qrId} payment detected via fetch: ${razorpayPaymentId}`,
-          );
-          try {
-            await this.queueService.enqueueFromPayment(payment.id);
-          } catch (err) {
-            this.logger.error(
-              `Enqueue from payment failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            throw err;
-          }
-        }
-      } catch (err) {
-        this.logger.warn(
-          `Fetch payments for QR ${qrId} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      await this.syncQrPaymentFromRazorpay(payment);
     }
 
     if (payment.status !== PaymentStatus.PAID) {
       return { status: 'created' };
     }
+
     const queueItem = await this.queueService.getQueueItemWithEtaByPaymentId(
       payment.id,
     );
@@ -371,7 +439,35 @@ export class PaymentsService {
     };
   }
 
-  async getVenueEarnings(venueId: string, startDate?: Date, endDate?: Date) {
+  private async syncQrPaymentFromRazorpay(payment: Payment): Promise<void> {
+    const qrId = payment.razorpayQrId!;
+    try {
+      const res = (await this.razorpay.qrCode.fetchAllPayments(qrId, {
+        count: QR_FETCH_PAYMENTS_COUNT,
+      })) as RazorpayQrFetchPaymentsResponse;
+      const items = res?.items ?? [];
+      const captured = items.find((p) => p.status === 'captured');
+      const razorpayPaymentId =
+        captured && typeof captured.id === 'string' ? captured.id : null;
+      if (razorpayPaymentId) {
+        await this.markPaymentPaidAndEnqueue(
+          payment,
+          razorpayPaymentId,
+          `QR ${qrId} payment detected via fetch`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Fetch payments for QR ${qrId} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async getVenueEarnings(
+    venueId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<VenueEarningsResult> {
     const qb = this.paymentRepository
       .createQueryBuilder('p')
       .where('p.venue_id = :venueId', { venueId });
@@ -383,41 +479,32 @@ export class PaymentsService {
       .leftJoinAndSelect('p.song', 'song')
       .orderBy('p.created_at', 'DESC')
       .getMany();
+
     const paidOnly = payments.filter((p) => p.status === PaymentStatus.PAID);
     const total = paidOnly.reduce((sum, p) => sum + p.amount, 0);
 
-    const paymentsDto = payments.map((p) => ({
-      id: p.id,
-      amount: p.amount,
-      createdAt: p.createdAt,
-      songId: p.songId,
-      songTitle: p.song?.title ?? null,
-      qrid: p.razorpayQrId ?? null,
-      customerName: p.customerName ?? null,
-      customerMobile: p.customerMobile ?? null,
-      status: p.status,
-      razorpayPaymentId: p.razorpayPaymentId ?? null,
-    }));
-
     return {
-      payments: paymentsDto,
+      payments: payments.map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        createdAt: p.createdAt,
+        songId: p.songId,
+        songTitle: p.song?.title ?? null,
+        qrid: p.razorpayQrId ?? null,
+        customerName: p.customerName ?? null,
+        customerMobile: p.customerMobile ?? null,
+        status: p.status,
+        razorpayPaymentId: p.razorpayPaymentId ?? null,
+      })),
       total,
       count: paidOnly.length,
     };
   }
 
-  private buildUpiString(
-    vpa: string,
-    venueName: string,
-    amount: number,
-    songTitle: string,
-    orderId: string,
-  ): string {
-    const note = `Jukebox: ${songTitle}`.slice(0, 50);
-    return `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(venueName)}&am=${amount}.00&tn=${encodeURIComponent(note)}&tr=${encodeURIComponent(orderId)}`;
-  }
-
-  /** Proxy a Razorpay QR image URL so the frontend can load it without CORS. Only allows rzp.io / api.razorpay.com. */
+  /**
+   * Proxy Razorpay QR image URL so frontend can load it without CORS.
+   * Only allows rzp.io and api.razorpay.com.
+   */
   async proxyQrImage(
     url: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
@@ -432,14 +519,16 @@ export class PaymentsService {
     const res = await axios.get<ArrayBuffer>(url, {
       responseType: 'arraybuffer',
       maxRedirects: 5,
-      timeout: 10000,
+      timeout: PROXY_QR_IMAGE_TIMEOUT_MS,
     });
     const rawContentType = res.headers['content-type'] as string | undefined;
     const contentType =
       (typeof rawContentType === 'string'
         ? rawContentType.split(';')[0]?.trim()
         : null) || 'image/png';
-    const buffer = Buffer.from(res.data);
-    return { buffer, contentType };
+    return {
+      buffer: Buffer.from(res.data),
+      contentType,
+    };
   }
 }

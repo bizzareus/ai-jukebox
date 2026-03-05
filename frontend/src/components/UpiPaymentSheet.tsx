@@ -3,12 +3,118 @@ import QRCode from 'qrcode';
 import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { BottomSheet } from './ui/BottomSheet';
 import { Button } from './ui/Button';
-import { CroppedRazorpayQr } from './CroppedRazorpayQr';
 import { UpiAppButtons } from './UpiAppButtons';
 import { api } from '../services/api';
 import { getSocket, connectSocket } from '../services/socket';
 import * as notifications from '../services/notifications';
 import type { CreateOrderResponse } from '../types';
+
+function getPlatform(): 'android' | 'ios' | 'desktop' {
+  if (typeof navigator === 'undefined') return 'desktop';
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  return 'desktop';
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: {
+      key: string;
+      order_id: string;
+      amount: number;
+      currency: string;
+      prefill?: { name?: string; email?: string; contact?: string };
+      handler: (response: { razorpay_payment_id: string }) => void;
+    }) => { open: () => void };
+  }
+}
+
+function loadRazorpayCheckout(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Razorpay checkout'));
+    document.head.appendChild(script);
+  });
+}
+
+/** Format 10-digit Indian mobile for Razorpay prefill (e.g. +919876543210). */
+function formatContactForRazorpay(mobile: string | undefined): string | undefined {
+  if (!mobile || typeof mobile !== 'string') return undefined;
+  const digits = mobile.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  return digits.length >= 10 ? `+91${digits.slice(-10)}` : undefined;
+}
+
+function PayOnlineButton({
+  razorpayKeyId,
+  razorpayOrderId,
+  amount,
+  customerMobile,
+  customerName,
+}: {
+  razorpayKeyId: string;
+  razorpayOrderId: string;
+  amount: number;
+  customerMobile?: string;
+  customerName?: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const handlePayOnline = async () => {
+    setLoading(true);
+    try {
+      await loadRazorpayCheckout();
+      if (!window.Razorpay) throw new Error('Razorpay not available');
+      const contact = formatContactForRazorpay(customerMobile);
+      const rzp = new window.Razorpay({
+        key: razorpayKeyId,
+        order_id: razorpayOrderId,
+        amount: amount * 100,
+        currency: 'INR',
+        ...(contact || customerName
+          ? {
+              prefill: {
+                ...(contact ? { contact } : {}),
+                ...(customerName?.trim() ? { name: customerName.trim() } : {}),
+              },
+            }
+          : {}),
+        handler: () => {
+          // Payment success; order-status polling will detect and update UI
+        },
+      });
+      rzp.open();
+    } catch (e) {
+      console.error('Pay Online failed:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <Button
+      variant="outline"
+      size="lg"
+      className="w-full flex items-center justify-center gap-2"
+      onClick={handlePayOnline}
+      disabled={loading}
+    >
+      {loading ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Opening…
+        </>
+      ) : (
+        'Pay Online'
+      )}
+    </Button>
+  );
+}
 
 interface UpiPaymentSheetProps {
   order: CreateOrderResponse | null;
@@ -93,8 +199,6 @@ export function UpiPaymentSheet({
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [notifySubscribing, setNotifySubscribing] = useState(false);
   const [notifySubscribed, setNotifySubscribed] = useState(false);
-  const [downloadedQrImageUrl, setDownloadedQrImageUrl] = useState<string | null>(null);
-  const [qrImageDownloadError, setQrImageDownloadError] = useState(false);
 
   // Pre-fill name and mobile from localStorage when payment sheet opens for the form
   useEffect(() => {
@@ -169,9 +273,12 @@ export function UpiPaymentSheet({
     };
   }, [open, order, applySuccess]);
 
-  // Draw QR on canvas when we have upiString; defer so ref is set after canvas mounts
+  const platform = getPlatform();
+  const showQr = (platform === 'ios' || platform === 'desktop') && !!order?.upiString;
+
+  // Draw QR on canvas for iOS/Desktop (Scan & Pay is the guaranteed cross-app flow on iOS)
   useEffect(() => {
-    if (!open || !order?.upiString) return;
+    if (!open || !showQr || !order?.upiString) return;
     const id = requestAnimationFrame(() => {
       if (canvasRef.current && order.upiString) {
         QRCode.toCanvas(canvasRef.current, order.upiString, {
@@ -182,44 +289,7 @@ export function UpiPaymentSheet({
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [open, order?.upiString]);
-
-  const qrObjectUrlRef = useRef<string | null>(null);
-
-  // Download QR image via backend proxy so CroppedRazorpayQr gets same-origin data (avoids CORS)
-  useEffect(() => {
-    if (!open || !order?.qrImageUrl) {
-      setDownloadedQrImageUrl(null);
-      setQrImageDownloadError(false);
-      return;
-    }
-    setQrImageDownloadError(false);
-    let cancelled = false;
-    const url = order.qrImageUrl;
-    api
-      .getBlob(`/payments/qr-image?url=${encodeURIComponent(url)}`)
-      .then((blob) => {
-        if (cancelled) return;
-        if (qrObjectUrlRef.current) URL.revokeObjectURL(qrObjectUrlRef.current);
-        const objectUrl = URL.createObjectURL(blob);
-        qrObjectUrlRef.current = objectUrl;
-        setDownloadedQrImageUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setQrImageDownloadError(true);
-          setDownloadedQrImageUrl(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-      if (qrObjectUrlRef.current) {
-        URL.revokeObjectURL(qrObjectUrlRef.current);
-        qrObjectUrlRef.current = null;
-      }
-      setDownloadedQrImageUrl(null);
-    };
-  }, [open, order?.qrImageUrl]);
+  }, [open, showQr, order?.upiString]);
 
   // When we have confirmed payload, call onSuccess after delay (so user sees success screen)
   useEffect(() => {
@@ -321,13 +391,13 @@ export function UpiPaymentSheet({
                 </div>
               </div>
             </div>
-            {order.upiString ? (
+            {showQr ? (
               <>
                 <a
                   href={order.upiString}
                   className="block rounded-2xl overflow-hidden border-2 border-stone-200 p-1 bg-white cursor-pointer hover:border-stone-300 active:opacity-90 transition-colors w-fit mx-auto"
                   onClick={(e) => {
-                    window.location.href = order.upiString!;
+                    if (order.upiString) window.location.assign(order.upiString);
                     e.preventDefault();
                   }}
                   aria-label="Open UPI app to pay"
@@ -335,21 +405,28 @@ export function UpiPaymentSheet({
                   <canvas ref={canvasRef} className="rounded-xl block" />
                 </a>
                 <p className="text-stone-500 text-sm text-center">
-                  Scan the QR code or tap to open your UPI app
+                  Scan &amp; Pay (QR)
                 </p>
+              </>
+            ) : null}
+            {order.upiString ? (
+              <>
+                {!showQr ? (
+                  <p className="text-stone-500 text-sm text-center">
+                    Pay via UPI app
+                  </p>
+                ) : null}
                 <UpiAppButtons upiLink={order.upiString} className="mt-1" />
               </>
-            ) : order.qrImageUrl ? (
-              downloadedQrImageUrl ? (
-                <CroppedRazorpayQr qrImageUrl={downloadedQrImageUrl} />
-              ) : qrImageDownloadError ? (
-                <CroppedRazorpayQr qrImageUrl={order.qrImageUrl} />
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="w-10 h-10 text-stone-400 animate-spin" />
-                  <p className="text-stone-500 text-sm mt-2">Loading QR code...</p>
-                </div>
-              )
+            ) : null}
+            {order.razorpayOrderId && order.razorpayKeyId ? (
+              <PayOnlineButton
+                razorpayKeyId={order.razorpayKeyId}
+                razorpayOrderId={order.razorpayOrderId}
+                amount={order.amount}
+                customerMobile={customerMobileProp}
+                customerName={customerNameProp}
+              />
             ) : null}
             <div className="flex items-center gap-2 text-stone-500">
               <Loader2 className="w-4 h-4 animate-spin" />

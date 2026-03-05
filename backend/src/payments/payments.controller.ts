@@ -23,13 +23,20 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post('create-order')
-  createOrder(@Body() dto: CreateOrderDto) {
+  createOrder(
+    @Body() dto: CreateOrderDto,
+  ): ReturnType<PaymentsService['createOrder']> {
     return this.paymentsService.createOrder(dto);
   }
 
   @Get('order-status')
-  orderStatus(@Query('orderId') orderId: string) {
-    return this.paymentsService.getOrderStatus(orderId);
+  getOrderStatus(
+    @Query('orderId') orderId: string | undefined,
+  ): ReturnType<PaymentsService['getOrderStatus']> {
+    if (!orderId?.trim()) {
+      throw new BadRequestException('orderId is required');
+    }
+    return this.paymentsService.getOrderStatus(orderId.trim());
   }
 
   @Get('qr-image')
@@ -48,22 +55,22 @@ export class PaymentsController {
   webhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-razorpay-signature') signature: string | undefined,
-  ) {
+  ): ReturnType<PaymentsService['handleWebhook']> {
     return this.paymentsService.handleWebhook(req.rawBody, signature);
   }
 
   @Get('earnings')
   @UseGuards(JwtAuthGuard)
-  earnings(
+  getEarnings(
     @CurrentAdmin() admin: Admin,
     @Query('venueId') venueId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-  ) {
+  ): ReturnType<PaymentsService['getVenueEarnings']> {
     const effectiveVenueId =
       admin.role === AdminRole.SUPER_ADMIN && venueId ? venueId : admin.venueId;
     if (!effectiveVenueId) {
-      return { payments: [], total: 0, count: 0 };
+      return Promise.resolve({ payments: [], total: 0, count: 0 });
     }
     return this.paymentsService.getVenueEarnings(
       effectiveVenueId,
