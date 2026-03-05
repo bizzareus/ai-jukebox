@@ -144,13 +144,17 @@ export default function DjMode() {
         try {
           if (next.setVolume) next.setVolume(nextVol);
           if (current.setVolume) current.setVolume(currVol);
-        } catch (_) {}
+        } catch (err) {
+          console.log('Crossfade volume adjust failed:', err);
+        }
         if (step >= steps) {
           clearInterval(crossfadeId);
           try {
             current.stopVideo();
             if (next.setVolume) next.setVolume(100);
-          } catch (_) {}
+          } catch (err) {
+            console.log('Crossfade stop failed:', err);
+          }
           setActiveSlot(activeSlot === 0 ? 1 : 0);
           const newNextId = pending[0]?.song?.youtubeVideoId ?? null;
           if (newNextId && current.cueVideoById) {

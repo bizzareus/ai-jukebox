@@ -23,6 +23,14 @@ export class GtmController {
     return this.gtmService.resolvePlace(dto.mapsUrl);
   }
 
+  @Post('find-bars-by-city')
+  async findBarsByCity(@Body() body: { city: string }) {
+    const city = typeof body?.city === 'string' ? body.city.trim() : '';
+    if (!city) return { bars: [] };
+    const bars = await this.gtmService.findBarsByCity(city);
+    return { bars };
+  }
+
   @Post('find-email')
   async findEmail(@Body() body: { websiteUrl: string }) {
     if (!body?.websiteUrl || typeof body.websiteUrl !== 'string') {

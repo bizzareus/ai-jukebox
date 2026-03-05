@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle, History } from 'lucide-react';
+import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle, History, Copy, MessageCircle, Building2, Search } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -21,6 +21,16 @@ interface GtmLead {
   status: string;
   sentAt: string;
   createdAt: string;
+  linkedinMessage: string | null;
+}
+
+interface OpenAIBarItem {
+  name: string;
+  address?: string;
+  possibleDirectorName?: string;
+  phone?: string;
+  website?: string;
+  area?: string;
 }
 
 export default function SuperAdminGtm() {
@@ -31,7 +41,12 @@ export default function SuperAdminGtm() {
   const [email, setEmail] = useState('');
   const [findingEmail, setFindingEmail] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [sendResult, setSendResult] = useState<{ ok: boolean; error?: string; linkedinMessage?: string } | null>(null);
+  const [linkedInCopiedId, setLinkedInCopiedId] = useState<string | null>(null);
+
+  const [cityInput, setCityInput] = useState('');
+  const [barsFromCity, setBarsFromCity] = useState<OpenAIBarItem[]>([]);
+  const [findingBars, setFindingBars] = useState(false);
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<GtmLead[]>({
     queryKey: ['gtm', 'leads'],
@@ -75,7 +90,7 @@ export default function SuperAdminGtm() {
     setSending(true);
     setSendResult(null);
     try {
-      const result = await api.post<{ ok: boolean; error?: string }>('/gtm/send-onboarding', {
+      const result = await api.post<{ ok: boolean; error?: string; linkedinMessage?: string }>('/gtm/send-onboarding', {
         placeName: place.name,
         address: place.address,
         phone: place.phone,
@@ -94,6 +109,34 @@ export default function SuperAdminGtm() {
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleFindBarsByCity = async () => {
+    if (!cityInput.trim()) return;
+    setFindingBars(true);
+    setBarsFromCity([]);
+    try {
+      const result = await api.post<{ bars: OpenAIBarItem[] }>('/gtm/find-bars-by-city', {
+        city: cityInput.trim(),
+      });
+      setBarsFromCity(result.bars ?? []);
+    } catch (e) {
+      console.log('Find bars by city failed', e);
+      setBarsFromCity([]);
+    } finally {
+      setFindingBars(false);
+    }
+  };
+
+  const copyLinkedInMessage = async (text: string, id?: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      const key = id ?? 'last-send';
+      setLinkedInCopiedId(key);
+      setTimeout(() => setLinkedInCopiedId(null), 2000);
+    } catch {
+      console.log('Copy failed');
     }
   };
 
@@ -117,9 +160,74 @@ export default function SuperAdminGtm() {
           GTM — Onboard a bar
         </h1>
         <p className="text-stone-500 text-sm mt-0.5">
-          Paste a Google Maps link, resolve the place, find or enter email, then send an intro email.
+          Find bars by city (OpenAI) or paste a Google Maps link, resolve the place, then send an intro email.
         </p>
       </div>
+
+      <Card className="p-4 mb-5">
+        <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-brand-600" />
+          Find bars by city
+        </h2>
+        <p className="text-stone-500 text-xs mb-3">
+          Enter a city name (e.g. Gurgaon, Mumbai) and get top 100 bars with details including possible director/contact names.
+        </p>
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            placeholder="e.g. Gurgaon, Delhi NCR"
+            value={cityInput}
+            onChange={(e) => setCityInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleFindBarsByCity()}
+            className="flex-1 min-w-0 bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
+          />
+          <Button onClick={handleFindBarsByCity} loading={findingBars} disabled={!cityInput.trim()}>
+            <Search className="w-4 h-4 mr-1" />
+            Find
+          </Button>
+        </div>
+        {barsFromCity.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border border-stone-200 max-h-[420px] overflow-y-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 bg-stone-50 border-b border-stone-200">
+                <tr className="text-left text-stone-500 uppercase tracking-wider text-xs">
+                  <th className="py-2 px-2 font-medium">#</th>
+                  <th className="py-2 px-2 font-medium">Name</th>
+                  <th className="py-2 px-2 font-medium">Address / Area</th>
+                  <th className="py-2 px-2 font-medium">Director / Contact</th>
+                  <th className="py-2 px-2 font-medium">Phone</th>
+                  <th className="py-2 px-2 font-medium">Website</th>
+                </tr>
+              </thead>
+              <tbody>
+                {barsFromCity.map((bar, i) => (
+                  <tr key={i} className="border-b border-stone-100 hover:bg-stone-50/50">
+                    <td className="py-2 px-2 text-stone-400">{i + 1}</td>
+                    <td className="py-2 px-2 font-medium text-stone-900">{bar.name}</td>
+                    <td className="py-2 px-2 text-stone-700 max-w-[200px] truncate" title={bar.address ?? bar.area}>
+                      {bar.address ?? bar.area ?? '—'}
+                    </td>
+                    <td className="py-2 px-2 text-stone-700">{bar.possibleDirectorName ?? '—'}</td>
+                    <td className="py-2 px-2 text-stone-700">{bar.phone ?? '—'}</td>
+                    <td className="py-2 px-2">
+                      {bar.website ? (
+                        <a href={bar.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline truncate max-w-[120px] block">
+                          Link
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {findingBars && barsFromCity.length === 0 && (
+          <p className="text-stone-500 text-sm">Finding bars…</p>
+        )}
+      </Card>
 
       <Card className="p-4 mb-5">
         <h2 className="text-sm font-semibold text-stone-900 mb-3">1. Google Maps link</h2>
@@ -221,6 +329,27 @@ export default function SuperAdminGtm() {
               {sendResult && !sendResult.ok && (
                 <p className="text-sm text-red-600">{sendResult.error}</p>
               )}
+              {sendResult?.ok && sendResult.linkedinMessage && (
+                <div className="mt-4 p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <p className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    LinkedIn message (copy & paste)
+                  </p>
+                  <pre className="text-sm text-stone-800 whitespace-pre-wrap font-sans mb-2 max-h-40 overflow-y-auto">
+                    {sendResult.linkedinMessage}
+                  </pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyLinkedInMessage(sendResult.linkedinMessage!, 'last-send')}
+                    className="flex items-center gap-1"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {linkedInCopiedId === 'last-send' ? 'Copied!' : 'Copy'}
+                  </Button>
+                </div>
+              )}
             </div>
           </Card>
         </>
@@ -251,6 +380,7 @@ export default function SuperAdminGtm() {
                   <th className="py-2 px-2 font-medium">Email</th>
                   <th className="py-2 px-2 font-medium">Status</th>
                   <th className="py-2 px-2 font-medium">Sent</th>
+                  <th className="py-2 px-2 font-medium">LinkedIn</th>
                 </tr>
               </thead>
               <tbody>
@@ -272,6 +402,23 @@ export default function SuperAdminGtm() {
                       </span>
                     </td>
                     <td className="py-2 px-2 text-stone-500">{formatDate(lead.sentAt)}</td>
+                    <td className="py-2 px-2">
+                      {lead.linkedinMessage ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyLinkedInMessage(lead.linkedinMessage!, lead.id)}
+                          className="flex items-center gap-1"
+                          title="Copy LinkedIn message"
+                        >
+                          <Copy className="w-3 h-3" />
+                          {linkedInCopiedId === lead.id ? 'Copied!' : 'Copy'}
+                        </Button>
+                      ) : (
+                        <span className="text-stone-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

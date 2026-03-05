@@ -1,8 +1,8 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, Link } from 'react-router-dom';
 import { LayoutDashboard, Music2, Library, BarChart2, LogOut, Building2, Globe, Settings, Rocket } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { authService } from '../../services/auth';
-import AdminOnboarding, { shouldShowAdminOnboarding } from '../../components/AdminOnboarding';
+import AdminOnboarding from '../../components/AdminOnboarding';
+import { shouldShowAdminOnboarding } from '../../components/adminOnboarding.helpers';
 
 const venueAdminNav = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Playlist } from './playlist.entity';
@@ -21,7 +26,9 @@ function extractListId(input: string): string {
 
 function ensurePlaylistImportable(youtubePlaylistId: string): void {
   const listId = extractListId(youtubePlaylistId).toUpperCase();
-  const prefix = UNSUPPORTED_PLAYLIST_PREFIXES.find((p) => listId.startsWith(p));
+  const prefix = UNSUPPORTED_PLAYLIST_PREFIXES.find((p) =>
+    listId.startsWith(p),
+  );
   if (prefix) {
     throw new BadRequestException(
       `This playlist type (${prefix}...) can't be imported. YouTube Music and Radio mixes, plus Watch Later/History, aren't supported by the YouTube API. Use a regular playlist link (URL with list=PL...) or create your own playlist and paste that link.`,
@@ -96,7 +103,7 @@ export class PlaylistsService {
     youtubePlaylistId: string,
   ): Promise<{ added: number; skipped: number; errors: string[] }> {
     ensurePlaylistImportable(youtubePlaylistId);
-    const playlist = await this.findById(playlistId);
+    await this.findById(playlistId);
     const videoIds =
       await this.songsService.getPlaylistVideoIds(youtubePlaylistId);
     if (videoIds.length === 0) {
@@ -148,7 +155,9 @@ export class PlaylistsService {
       description: global.description ?? undefined,
       coverImageUrl: global.coverImageUrl ?? undefined,
     });
-    const songs = (global.playlistSongs ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+    const songs = (global.playlistSongs ?? []).sort(
+      (a, b) => a.sortOrder - b.sortOrder,
+    );
     for (let i = 0; i < songs.length; i++) {
       const ps = songs[i];
       if (ps.songId && ps.song) {

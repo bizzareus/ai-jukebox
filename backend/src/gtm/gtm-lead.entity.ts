@@ -37,6 +37,9 @@ export class GtmLead {
   @Column({ name: 'created_by_admin_id', type: 'uuid', nullable: true })
   createdByAdminId: string | null;
 
+  @Column({ name: 'linkedin_message', type: 'text', nullable: true })
+  linkedinMessage: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import jsQR from 'jsqr';
 import { Loader2 } from 'lucide-react';
-import { Button } from './ui/Button';
+import { UpiAppButtons } from './UpiAppButtons';
 
 interface CroppedRazorpayQrProps {
   qrImageUrl: string;
@@ -28,6 +28,7 @@ export function CroppedRazorpayQr({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ status: 'loading' });
 
     const img = new Image();
@@ -149,16 +150,7 @@ export function CroppedRazorpayQr({
             className="rounded-xl block max-w-[220px] h-auto"
           />
         </a>
-        <a
-          href={state.fallbackUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full"
-        >
-          <Button variant="primary" size="lg" className="w-full">
-            Pay with UPI
-          </Button>
-        </a>
+        <UpiAppButtons upiLink={state.fallbackUrl} />
       </div>
     );
   }
@@ -186,16 +178,7 @@ export function CroppedRazorpayQr({
       <p className="text-stone-500 text-sm text-center">
         Scan the QR code or tap to open your UPI app
       </p>
-      <a
-        href={upiLink}
-        className="w-full inline-flex items-center justify-center gap-2 font-semibold rounded-xl px-6 py-3.5 text-base bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-600/20 transition-all active:scale-95"
-        onClick={(e) => {
-          handleOpen(upiLink);
-          e.preventDefault();
-        }}
-      >
-        Pay with UPI
-      </a>
+      <UpiAppButtons upiLink={upiLink} />
     </div>
   );
 }

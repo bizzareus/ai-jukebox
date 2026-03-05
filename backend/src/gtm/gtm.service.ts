@@ -15,6 +15,15 @@ export interface ResolvedPlace {
   website?: string;
 }
 
+export interface OpenAIBarItem {
+  name: string;
+  address?: string;
+  possibleDirectorName?: string;
+  phone?: string;
+  website?: string;
+  area?: string;
+}
+
 @Injectable()
 export class GtmService {
   private readonly logger = new Logger(GtmService.name);
@@ -146,6 +155,60 @@ export class GtmService {
     }
   }
 
+  async findBarsByCity(city: string): Promise<OpenAIBarItem[]> {
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      this.logger.warn('OPENAI_API_KEY not set');
+      return [];
+    }
+    const prompt = `List the top 100 bars, pubs, or nightlife venues in ${city} (India). For each venue provide:
+- name: official or common name
+- address: full address if known, else area/sector
+- possibleDirectorName: owner, manager, or key contact name if you know it (otherwise null)
+- phone: contact number if known (otherwise null)
+- website: official website or social link if known (otherwise null)
+- area: locality/sector (e.g. Cyber City, MG Road)
+
+Return ONLY a valid JSON object with a single key "bars" whose value is an array of objects. No markdown, no code fence. Example: {"bars":[{"name":"Bar Name","address":"...","possibleDirectorName":"...","phone":null,"website":null,"area":"..."}]}`;
+
+    try {
+      const res = await axios.post<{
+        choices?: Array<{
+          message?: { content?: string };
+        }>;
+      }>(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          max_tokens: 16000,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000,
+        },
+      );
+      const raw = res.data?.choices?.[0]?.message?.content?.trim() ?? '';
+      let parsed: { bars?: OpenAIBarItem[] };
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]) as { bars?: OpenAIBarItem[] };
+      } else {
+        parsed = JSON.parse(raw) as { bars?: OpenAIBarItem[] };
+      }
+      const bars = Array.isArray(parsed.bars) ? parsed.bars : [];
+      this.logger.log(`OpenAI returned ${bars.length} bars for city: ${city}`);
+      return bars.slice(0, 100);
+    } catch (e) {
+      this.logger.warn('OpenAI find-bars-by-city failed', e);
+      return [];
+    }
+  }
+
   async findEmailFromWebsite(websiteUrl: string): Promise<string | null> {
     try {
       const res = await axios.get<string>(websiteUrl, {
@@ -186,7 +249,7 @@ export class GtmService {
   async sendOnboarding(
     dto: SendOnboardingDto,
     adminId?: string,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; linkedinMessage?: string }> {
     const fromEmail =
       this.configService.get<string>('GTM_FROM_EMAIL') ||
       this.configService.get<string>('RESEND_FROM') ||
@@ -229,13 +292,20 @@ export class GtmService {
 `;
     if (!apiKey) {
       this.logger.warn('RESEND_API_KEY not set — storing lead only');
-      await this.saveLead(dto, 'skipped_no_provider', adminId);
+      const linkedinMessage = this.buildLinkedInMessage(
+        dto.placeName,
+        signupLink,
+      );
+      await this.saveLead(dto, 'skipped_no_provider', adminId, linkedinMessage);
       return { ok: false, error: 'Email provider not configured' };
     }
     const replyTo = this.configService.get<string>('GTM_REPLY_TO');
+    const ccEmail =
+      this.configService.get<string>('GTM_CC_EMAIL') || 'me@kartikarora.in';
     const payload: Record<string, unknown> = {
       from: fromEmail,
       to: [dto.email],
+      cc: [ccEmail],
       subject: `Free Jukebox App for ${dto.placeName}`,
       html,
     };
@@ -248,25 +318,49 @@ export class GtmService {
         },
         timeout: 10000,
       });
-      await this.saveLead(dto, 'sent', adminId);
+      const linkedinMessage = this.buildLinkedInMessage(
+        dto.placeName,
+        signupLink,
+      );
+      await this.saveLead(dto, 'sent', adminId, linkedinMessage);
       this.logger.log(
         `Onboarding email sent to ${dto.email} for ${dto.placeName}`,
       );
-      return { ok: true };
+      return { ok: true, linkedinMessage };
     } catch (e) {
       const message = axios.isAxiosError(e)
         ? e.response?.data?.message
         : (e as Error).message;
       this.logger.warn('Send onboarding failed', e);
-      await this.saveLead(dto, 'failed', adminId);
+      const linkedinMessage = this.buildLinkedInMessage(
+        dto.placeName,
+        signupLink,
+      );
+      await this.saveLead(dto, 'failed', adminId, linkedinMessage);
       return { ok: false, error: message ?? 'Failed to send email' };
     }
+  }
+
+  private buildLinkedInMessage(
+    placeName: string,
+    loginOrSignupUrl: string,
+  ): string {
+    return `Hi,
+
+I thought ${placeName} would be a great fit for Jukebox — it lets your customers request and pay for songs at your venue via QR & UPI. You earn from every play.
+
+Here's your link to get started: ${loginOrSignupUrl}
+
+Happy to help if you have any questions!
+
+Best`;
   }
 
   private async saveLead(
     dto: SendOnboardingDto,
     status: string,
     adminId?: string,
+    linkedinMessage?: string,
   ): Promise<void> {
     await this.gtmLeadRepository.save(
       this.gtmLeadRepository.create({
@@ -279,6 +373,7 @@ export class GtmService {
         status,
         sentAt: new Date(),
         createdByAdminId: adminId ?? null,
+        linkedinMessage: linkedinMessage ?? null,
       }),
     );
   }
