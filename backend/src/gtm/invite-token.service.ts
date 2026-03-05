@@ -20,7 +20,9 @@ export class InviteTokenService {
   sign(payload: InviteTokenPayload): string {
     const secret = this.configService.get<string>('INVITE_TOKEN_SECRET');
     if (!secret) {
-      this.logger.warn('INVITE_TOKEN_SECRET not set — invite tokens will be unsigned');
+      this.logger.warn(
+        'INVITE_TOKEN_SECRET not set — invite tokens will be unsigned',
+      );
     }
     return jwt.sign(payload, secret || 'invite-fallback-secret', {
       expiresIn: INVITE_TOKEN_EXPIRY,

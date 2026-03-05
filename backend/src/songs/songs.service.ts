@@ -81,7 +81,9 @@ export class SongsService {
       where: { youtubeVideoId: videoId },
     });
     if (existing) {
-      this.logger.debug(`Song already in DB: ${existing.title} [${videoId}], skipping YouTube fetch`);
+      this.logger.debug(
+        `Song already in DB: ${existing.title} [${videoId}], skipping YouTube fetch`,
+      );
       return existing;
     }
 

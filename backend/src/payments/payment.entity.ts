@@ -28,10 +28,20 @@ export class Payment {
   @JoinColumn({ name: 'venue_id' })
   venue: Venue;
 
-  @Column({ name: 'razorpay_qr_id', type: 'varchar', unique: true, nullable: true })
+  @Column({
+    name: 'razorpay_qr_id',
+    type: 'varchar',
+    unique: true,
+    nullable: true,
+  })
   razorpayQrId: string | null;
 
-  @Column({ name: 'razorpay_payment_id', type: 'varchar', nullable: true, unique: true })
+  @Column({
+    name: 'razorpay_payment_id',
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
   razorpayPaymentId: string | null;
 
   @Column({ name: 'song_id' })

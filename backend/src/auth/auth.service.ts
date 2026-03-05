@@ -64,10 +64,14 @@ export class AuthService {
   private async registerWithInvite(dto: RegisterDto) {
     const payload = this.inviteTokenService.verify(dto.invite!);
     if (!payload) {
-      throw new BadRequestException('Invalid or expired invite link. Please request a new one.');
+      throw new BadRequestException(
+        'Invalid or expired invite link. Please request a new one.',
+      );
     }
     if (payload.email.toLowerCase() !== dto.email.toLowerCase()) {
-      throw new BadRequestException('This invite link is for a different email address.');
+      throw new BadRequestException(
+        'This invite link is for a different email address.',
+      );
     }
     const venue = await this.venuesService.createFromInvite(
       payload.venueName,
@@ -190,10 +194,14 @@ export class AuthService {
 
   /** Generate a presigned login link for a venue admin. Super admin only. */
   async createLoginLink(adminId: string): Promise<{ loginLink: string }> {
-    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    const admin = await this.adminRepository.findOne({
+      where: { id: adminId },
+    });
     if (!admin) throw new NotFoundException('Admin not found');
     if (admin.role !== AdminRole.VENUE_ADMIN) {
-      throw new ForbiddenException('Login links can only be created for venue admins');
+      throw new ForbiddenException(
+        'Login links can only be created for venue admins',
+      );
     }
     const token = this.loginLinkTokenService.sign(admin.id);
     const baseUrl = process.env.FRONTEND_URL || 'https://muzobox.com';
@@ -206,7 +214,9 @@ export class AuthService {
   async loginWithToken(token: string) {
     const adminId = this.loginLinkTokenService.verify(token);
     if (!adminId) {
-      throw new UnauthorizedException('Invalid or expired login link. Request a new one.');
+      throw new UnauthorizedException(
+        'Invalid or expired login link. Request a new one.',
+      );
     }
     const admin = await this.adminRepository.findOne({
       where: { id: adminId },
@@ -216,7 +226,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired login link.');
     }
     if (admin.role !== AdminRole.VENUE_ADMIN) {
-      throw new ForbiddenException('This link cannot be used for super admins.');
+      throw new ForbiddenException(
+        'This link cannot be used for super admins.',
+      );
     }
     this.logger.log(`Login via link: ${admin.email}`);
     return this.buildTokenResponse(admin);

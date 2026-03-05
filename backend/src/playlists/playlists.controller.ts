@@ -71,7 +71,10 @@ export class PlaylistsController {
     @Param('id') id: string,
     @Body() dto: AddSongByUrlDto,
   ) {
-    return this.playlistsService.addSongToPlaylistByYoutubeUrl(id, dto.youtubeUrl);
+    return this.playlistsService.addSongToPlaylistByYoutubeUrl(
+      id,
+      dto.youtubeUrl,
+    );
   }
 
   @Post('playlists/global-collections/:id/songs/by-playlist')

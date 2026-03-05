@@ -13,7 +13,9 @@ export class LoginLinkTokenService {
   sign(adminId: string): string {
     const secret = this.configService.get<string>('INVITE_TOKEN_SECRET');
     if (!secret) {
-      this.logger.warn('INVITE_TOKEN_SECRET not set — login link tokens will be unsigned');
+      this.logger.warn(
+        'INVITE_TOKEN_SECRET not set — login link tokens will be unsigned',
+      );
     }
     return jwt.sign(
       { sub: adminId, purpose: 'login_link' },
@@ -25,7 +27,10 @@ export class LoginLinkTokenService {
   verify(token: string): string | null {
     try {
       const secret = this.configService.get<string>('INVITE_TOKEN_SECRET');
-      const decoded = jwt.verify(token, secret || 'login-link-fallback-secret') as {
+      const decoded = jwt.verify(
+        token,
+        secret || 'login-link-fallback-secret',
+      ) as {
         sub?: string;
         purpose?: string;
       };
