@@ -36,10 +36,15 @@ export class WasenderApiService {
     return `+${digits}`;
   }
 
-  /** Send a text message. Returns msgId on success. */
+  private static delayMs(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Send a text message. Returns msgId on success. Retries once on 429 with delay. */
   async sendTextMessage(
     to: string,
     text: string,
+    isRetry = false,
   ): Promise<WasenderSendMessageResult | null> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -73,8 +78,37 @@ export class WasenderApiService {
         };
       }
       return { success: false };
-    } catch (e) {
-      this.logger.warn('WasenderAPI send-message failed', e);
+    } catch (e: unknown) {
+      const status = axios.isAxiosError(e) ? e.response?.status : null;
+      const retryAfter =
+        axios.isAxiosError(e) &&
+        e.response &&
+        typeof e.response.headers?.['retry-after'] === 'string'
+          ? parseInt(e.response.headers['retry-after'], 10) * 1000
+          : 60_000;
+
+      if (status === 429 && !isRetry) {
+        this.logger.warn(
+          `WasenderAPI rate limited (429). Retrying after ${retryAfter}ms`,
+        );
+        await WasenderApiService.delayMs(
+          Number.isNaN(retryAfter) ? 60_000 : Math.min(retryAfter, 120_000),
+        );
+        return this.sendTextMessage(to, text, true);
+      }
+
+      if (status === 429) {
+        this.logger.warn(
+          'WasenderAPI rate limited (429) again after retry. Increase WASENDER_SEND_DELAY_MS or send fewer messages.',
+        );
+      } else {
+        const message = axios.isAxiosError(e)
+          ? `${e.message}${e.response?.data ? ` — ${JSON.stringify(e.response.data)}` : ''}`
+          : e instanceof Error
+            ? e.message
+            : 'Unknown error';
+        this.logger.warn(`WasenderAPI send-message failed: ${message}`);
+      }
       return null;
     }
   }

@@ -59,11 +59,7 @@ export class GtmController {
 
   @Post('find-bars-by-location')
   async findBarsByLocation(@Body() dto: FindBarsByLocationDto) {
-    return this.gtmService.findBarsByLocation(
-      dto.lat,
-      dto.lng,
-      dto.page ?? 0,
-    );
+    return this.gtmService.findBarsByLocation(dto.lat, dto.lng, dto.page ?? 0);
   }
 
   @Post('onboarding-message')

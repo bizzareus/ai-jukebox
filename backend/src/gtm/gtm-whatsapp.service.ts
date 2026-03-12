@@ -42,15 +42,23 @@ export class GtmWhatsappService {
     private readonly wasenderApi: WasenderApiService,
   ) {}
 
+  private static delayMs(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /** Send WhatsApp to selected bars; create conversation + outbound message per bar. Appends onboard link per conversation. */
   async sendToBars(
     dto: SendWhatsappToBarsDto,
   ): Promise<{ sent: number; failed: number }> {
     const baseUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
+    const delayBetweenSends =
+      Number(this.configService.get<string>('WASENDER_SEND_DELAY_MS')) || 3000;
     let sent = 0;
     let failed = 0;
-    for (const bar of dto.bars) {
+    const total = dto.bars.length;
+    for (let i = 0; i < total; i++) {
+      const bar = dto.bars[i];
       const phone = this.wasenderApi.normalizePhone(bar.phone);
       if (!phone) {
         failed += 1;
@@ -91,13 +99,16 @@ export class GtmWhatsappService {
             isAiReply: false,
           }),
         );
-        this.conversationRepo.update(conversation.id, {
+        void this.conversationRepo.update(conversation.id, {
           updatedAt: new Date(),
           barName: bar.barName ?? conversation.barName,
         });
         sent += 1;
       } else {
         failed += 1;
+      }
+      if (i < total - 1 && delayBetweenSends > 0) {
+        await GtmWhatsappService.delayMs(delayBetweenSends);
       }
     }
     return { sent, failed };
