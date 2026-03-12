@@ -22,4 +22,8 @@ export class SendOnboardingDto {
   @IsOptional()
   @IsString()
   placeId?: string;
+
+  @IsOptional()
+  @IsString()
+  contactName?: string;
 }

@@ -192,6 +192,15 @@ export class AuthService {
     this.logger.log(`Deleted venue admin: ${admin.email}`);
   }
 
+  /** Return the first super admin id (for GTM onboard fallback owner). */
+  async findFirstSuperAdminId(): Promise<string | null> {
+    const admin = await this.adminRepository.findOne({
+      where: { role: AdminRole.SUPER_ADMIN },
+      order: { createdAt: 'ASC' },
+    });
+    return admin?.id ?? null;
+  }
+
   /** Generate a presigned login link for a venue admin. Super admin only. */
   async createLoginLink(adminId: string): Promise<{ loginLink: string }> {
     const admin = await this.adminRepository.findOne({

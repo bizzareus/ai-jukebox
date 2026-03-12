@@ -53,6 +53,17 @@ export class VenuesService {
     ownerId: string,
     _address?: string,
   ): Promise<Venue> {
+    return this.createFromOnboard(venueName, ownerId, 100);
+  }
+
+  /**
+   * Create a venue from the WhatsApp onboard flow (price configurable). Caller creates venue admin and sets conversation onboardedVenueId.
+   */
+  async createFromOnboard(
+    venueName: string,
+    ownerId: string,
+    pricePerSong: number,
+  ): Promise<Venue> {
     const slug = await this.uniqueSlugFromName(venueName);
     const defaultUpi = process.env.INVITE_DEFAULT_UPI_VPA || 'pending@venue';
     const venue = this.venueRepository.create({
@@ -60,13 +71,15 @@ export class VenuesService {
       slug,
       upiVpa: defaultUpi,
       ownerId,
-      pricePerSong: 100,
+      pricePerSong: Math.max(0, Math.round(pricePerSong)),
     });
     const saved = await this.venueRepository.save(venue);
     const qrCodeUrl = await this.generateQrCode(saved.slug);
     saved.qrCodeUrl = qrCodeUrl;
     const final = await this.venueRepository.save(saved);
-    this.logger.log(`Created venue from invite: ${final.name} [${final.slug}]`);
+    this.logger.log(
+      `Created venue from onboard: ${final.name} [${final.slug}] price=${final.pricePerSong}`,
+    );
     return final;
   }
 

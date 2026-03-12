@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Music2, ChevronRight } from 'lucide-react';
+import { Search, Music2, ChevronRight, Phone, X } from 'lucide-react';
 import { api } from '../../services/api';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
@@ -11,12 +11,16 @@ import { useQueue } from '../../hooks/useQueue';
 import { QueueItemStatus } from '../../types';
 import type { Venue, Playlist, YtSearchResult, QueueItem, Song } from '../../types';
 
+const ONBOARDING_CALL_NUMBER = '+919999224767';
+
 export default function VenueHome() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<YtSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [showWhatsappOnboardPopup, setShowWhatsappOnboardPopup] = useState(false);
 
   const { data: venue } = useQuery<Venue>({
     queryKey: ['venue', slug],
@@ -102,6 +106,17 @@ export default function VenueHome() {
     };
   }, [venue?.id, venue?.name]);
 
+  // Show WhatsApp onboarding popup when user lands from the link (e.g. /sample-bar?from=whatsapp-onboard)
+  useEffect(() => {
+    if (searchParams.get('from') === 'whatsapp-onboard') {
+      setShowWhatsappOnboardPopup(true);
+      setSearchParams((prev) => {
+        prev.delete('from');
+        return prev;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   if (!venue) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface">
@@ -116,6 +131,42 @@ export default function VenueHome() {
   return (
     <div className="min-h-screen bg-surface pb-24">
       <CustomerOnboarding />
+      {/* WhatsApp onboarding popup: call for onboarding */}
+      {showWhatsappOnboardPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
+            <button
+              type="button"
+              onClick={() => setShowWhatsappOnboardPopup(false)}
+              className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 p-1 rounded-lg"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center">
+                <Music2 className="w-6 h-6 text-brand-600" />
+              </div>
+              <div>
+                <h3 className="font-display font-semibold text-stone-900 text-lg">Welcome to MuzoBox</h3>
+                <p className="text-stone-600 text-sm mt-2">
+                  You can give us a call for onboarding. We’ll help you set up your venue.
+                </p>
+              </div>
+              <a
+                href={`tel:${ONBOARDING_CALL_NUMBER.replace(/\s/g, '')}`}
+                className="flex items-center justify-center gap-2 w-full rounded-xl bg-brand-600 text-white py-3 px-4 font-medium text-sm hover:bg-brand-700 transition-colors"
+              >
+                <Phone className="w-5 h-5" />
+                Call {ONBOARDING_CALL_NUMBER}
+              </a>
+              <p className="text-stone-500 text-xs">
+                Or save this number and call when it’s convenient.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="px-4 pt-10 pb-6">
         <div className="flex items-center gap-2 mb-1">

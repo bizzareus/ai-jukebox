@@ -21,6 +21,7 @@ import SuperAdminCollections from './pages/admin/SuperAdminCollections';
 import SuperAdminGtm from './pages/admin/SuperAdminGtm';
 import Settings from './pages/admin/Settings';
 import Landing from './pages/Landing';
+import Onboard from './pages/Onboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,9 @@ export default function App() {
           <Route path="/:slug/playlist/:playlistId" element={<PlaylistView />} />
           <Route path="/:slug/song/:songId" element={<SongDetail />} />
           <Route path="/:slug/queue" element={<QueueView />} />
+
+          {/* Public onboard (from WhatsApp link) */}
+          <Route path="/onboard" element={<Onboard />} />
 
           {/* Admin routes */}
           <Route path="/admin/login" element={<AdminLogin />} />

@@ -24,6 +24,34 @@ export interface OpenAIBarItem {
   area?: string;
 }
 
+/** Bar/venue from Google Places Nearby Search (lat/lng + 5km radius). Phone is mobile-only (landline stripped). */
+export interface BarFromLocation {
+  placeId: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  website?: string;
+}
+
+/** Indian mobile: 10 digits starting with 6, 7, 8, or 9. Rejects landlines. */
+function isIndianMobile(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return true;
+  if (
+    digits.length === 11 &&
+    digits.startsWith('0') &&
+    /^0[6-9]\d{9}$/.test(digits)
+  )
+    return true;
+  if (
+    digits.length === 12 &&
+    digits.startsWith('91') &&
+    /^91[6-9]\d{9}$/.test(digits)
+  )
+    return true;
+  return false;
+}
+
 @Injectable()
 export class GtmService {
   private readonly logger = new Logger(GtmService.name);
@@ -155,6 +183,73 @@ export class GtmService {
     }
   }
 
+  private static readonly BARS_RADIUS_M = 5000;
+
+  async findBarsByLocation(
+    lat: number,
+    lng: number,
+  ): Promise<BarFromLocation[]> {
+    const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+    if (!apiKey) {
+      this.logger.warn('GOOGLE_PLACES_API_KEY not set');
+      return [];
+    }
+    try {
+      const searchRes = await axios.post<{
+        places?: Array<{
+          id?: string;
+          displayName?: { text?: string };
+          formattedAddress?: string;
+          nationalPhoneNumber?: string;
+          websiteUri?: string;
+        }>;
+      }>(
+        'https://places.googleapis.com/v1/places:searchNearby',
+        {
+          locationRestriction: {
+            circle: {
+              center: { latitude: lat, longitude: lng },
+              radius: GtmService.BARS_RADIUS_M,
+            },
+          },
+          includedTypes: ['bar', 'night_club'],
+          maxResultCount: 20,
+        },
+        {
+          timeout: 15000,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask':
+              'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri',
+          },
+        },
+      );
+      const places = searchRes.data?.places ?? [];
+      const bars: BarFromLocation[] = places
+        .filter((p) => p.id)
+        .map((p) => {
+          const rawPhone = p.nationalPhoneNumber;
+          const phone =
+            rawPhone && isIndianMobile(rawPhone) ? rawPhone : undefined;
+          return {
+            placeId: p.id!,
+            name: p.displayName?.text ?? 'Unknown',
+            address: p.formattedAddress,
+            phone,
+            website: p.websiteUri,
+          };
+        });
+      this.logger.log(
+        `findBarsByLocation: ${bars.length} bars in 5km of (${lat}, ${lng})`,
+      );
+      return bars;
+    } catch (e) {
+      this.logger.warn('Places searchNearby failed', e);
+      return [];
+    }
+  }
+
   async findBarsByCity(city: string): Promise<OpenAIBarItem[]> {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -250,6 +345,9 @@ Return ONLY a valid JSON object with a single key "bars" whose value is an array
     dto: SendOnboardingDto,
     adminId?: string,
   ): Promise<{ ok: boolean; error?: string; linkedinMessage?: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- DTO optional string
+    const contactName: string | undefined =
+      typeof dto.contactName === 'string' ? dto.contactName : undefined;
     const fromEmail =
       this.configService.get<string>('GTM_FROM_EMAIL') ||
       this.configService.get<string>('RESEND_FROM') ||
@@ -295,6 +393,7 @@ Return ONLY a valid JSON object with a single key "bars" whose value is an array
       const linkedinMessage = this.buildLinkedInMessage(
         dto.placeName,
         signupLink,
+        contactName,
       );
       await this.saveLead(dto, 'skipped_no_provider', adminId, linkedinMessage);
       return { ok: false, error: 'Email provider not configured' };
@@ -321,6 +420,7 @@ Return ONLY a valid JSON object with a single key "bars" whose value is an array
       const linkedinMessage = this.buildLinkedInMessage(
         dto.placeName,
         signupLink,
+        contactName,
       );
       await this.saveLead(dto, 'sent', adminId, linkedinMessage);
       this.logger.log(
@@ -328,32 +428,135 @@ Return ONLY a valid JSON object with a single key "bars" whose value is an array
       );
       return { ok: true, linkedinMessage };
     } catch (e) {
-      const message = axios.isAxiosError(e)
-        ? e.response?.data?.message
-        : (e as Error).message;
+      let message: string;
+      if (axios.isAxiosError(e)) {
+        const data = e.response?.data as { message?: string } | undefined;
+        message =
+          typeof data === 'object' && data != null && 'message' in data
+            ? (data as { message: string }).message
+            : (e as Error).message;
+      } else {
+        message = (e as Error).message;
+      }
       this.logger.warn('Send onboarding failed', e);
       const linkedinMessage = this.buildLinkedInMessage(
         dto.placeName,
         signupLink,
+        contactName,
       );
       await this.saveLead(dto, 'failed', adminId, linkedinMessage);
       return { ok: false, error: message ?? 'Failed to send email' };
     }
   }
 
-  private buildLinkedInMessage(
+  /** Returns the onboarding message text and signup link for a place (for GTM table display / copy). */
+  getOnboardingMessage(
     placeName: string,
+    options: {
+      address?: string;
+      placeId?: string;
+      email?: string;
+      contactName?: string;
+    } = {},
+    adminId?: string,
+  ): { message: string; signupLink: string } {
+    const signupUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
+    let signupLink = `${signupUrl}/admin/login`;
+    if (options.email && adminId != null && placeName.trim().length > 0) {
+      const inviteToken = this.inviteTokenService.sign({
+        email: options.email,
+        venueName: placeName.trim(),
+        address: options.address,
+        createdByAdminId: adminId,
+      });
+      signupLink = `${signupUrl}/admin/register?invite=${encodeURIComponent(inviteToken)}`;
+    } else {
+      signupLink = `${signupUrl}/admin/register`;
+    }
+    const message = this.buildLinkedInMessage(
+      placeName,
+      signupLink,
+      options.contactName,
+    );
+    return { message, signupLink };
+  }
+
+  private buildLinkedInMessage(
+    _placeName: string,
     loginOrSignupUrl: string,
+    contactName?: string,
   ): string {
-    return `Hi,
+    const name = (contactName?.trim() || 'there').replace(/\s+/g, ' ');
+    return `Hi ${name}, I'm Kartik from MuzoBox 🎶
 
-I thought ${placeName} would be a great fit for Jukebox — it lets your customers request and pay for songs at your venue via QR & UPI. You earn from every play.
+We help bars & restaurants boost customer engagement and drive extra revenue during non-DJ hours by letting your guests play music directly from their phones. With MuzoBox, your playlist is curated by you to match your venue's vibe, so customers choose from songs you've approved — keeping the music relevant and fun.
 
-Here's your link to get started: ${loginOrSignupUrl}
+Get started here: ${loginOrSignupUrl}`;
+  }
 
-Happy to help if you have any questions!
+  /**
+   * Use OpenAI to find a mobile number (and optionally contact name) for a venue in India.
+   * Returns only if the number looks like an Indian mobile (10 digits, 6–9); landlines are excluded.
+   */
+  async findMobileWithOpenAI(
+    venueName: string,
+    address?: string,
+  ): Promise<{ mobile: string | null; contactName: string | null }> {
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      this.logger.warn('OPENAI_API_KEY not set');
+      return { mobile: null, contactName: null };
+    }
+    const location = address ? ` at ${address}` : '';
+    const prompt = `For this bar/restaurant in India: "${venueName}"${location}.
 
-Best`;
+Find the primary contact mobile number (Indian 10-digit number starting with 6, 7, 8, or 9). Do NOT return landline numbers.
+If possible, also provide the contact person's name (owner, manager, or main contact).
+
+Return ONLY a valid JSON object with two keys: "mobile" (string or null) and "contactName" (string or null).
+Example: {"mobile":"9876543210","contactName":"Rahul"} or {"mobile":null,"contactName":null}
+No markdown, no code fence.`;
+
+    try {
+      const res = await axios.post<{
+        choices?: Array<{ message?: { content?: string } }>;
+      }>(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          max_tokens: 256,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        },
+      );
+      const raw = res.data?.choices?.[0]?.message?.content?.trim() ?? '{}';
+      const parsed = JSON.parse(raw) as {
+        mobile?: string | null;
+        contactName?: string | null;
+      };
+      let mobile: string | null =
+        typeof parsed.mobile === 'string' ? parsed.mobile : null;
+      if (mobile && !isIndianMobile(mobile)) {
+        this.logger.debug(
+          `OpenAI returned non-mobile number, discarding: ${mobile}`,
+        );
+        mobile = null;
+      }
+      const contactName =
+        typeof parsed.contactName === 'string' ? parsed.contactName : null;
+      return { mobile, contactName };
+    } catch (e) {
+      this.logger.warn('findMobileWithOpenAI failed', e);
+      return { mobile: null, contactName: null };
+    }
   }
 
   private async saveLead(

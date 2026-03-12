@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle, History, Copy, MessageCircle, Building2, Search } from 'lucide-react';
+import { Rocket, MapPin, Mail, Phone, Globe, CheckCircle, History, Copy, MessageCircle, Building2, Search, MessageSquare } from 'lucide-react';
 import { api } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -33,6 +33,32 @@ interface OpenAIBarItem {
   area?: string;
 }
 
+/** Bar from Google Places Nearby Search (lat/lng + 5km radius). */
+interface BarFromLocation {
+  placeId: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  website?: string;
+}
+
+interface WhatsappConversation {
+  id: string;
+  phone: string;
+  barName: string | null;
+  updatedAt: string;
+  lastMessagePreview: string | null;
+  lastMessageAt: string | null;
+}
+
+interface WhatsappMessage {
+  id: string;
+  direction: 'in' | 'out';
+  body: string;
+  isAiReply: boolean;
+  createdAt: string;
+}
+
 export default function SuperAdminGtm() {
   const queryClient = useQueryClient();
   const [mapsUrl, setMapsUrl] = useState('');
@@ -48,9 +74,42 @@ export default function SuperAdminGtm() {
   const [barsFromCity, setBarsFromCity] = useState<OpenAIBarItem[]>([]);
   const [findingBars, setFindingBars] = useState(false);
 
+  const [latInput, setLatInput] = useState('');
+  const [lngInput, setLngInput] = useState('');
+  const [barsFromLocation, setBarsFromLocation] = useState<BarFromLocation[]>([]);
+  const [findingBarsByLocation, setFindingBarsByLocation] = useState(false);
+  const [rowEmails, setRowEmails] = useState<Record<string, string>>({});
+  const [rowMobileOverrides, setRowMobileOverrides] = useState<Record<string, string>>({});
+  const [rowContactNames, setRowContactNames] = useState<Record<string, string>>({});
+  const [rowMessages, setRowMessages] = useState<Record<string, string>>({});
+  const [findingEmailForPlaceId, setFindingEmailForPlaceId] = useState<string | null>(null);
+  const [findingMobileForPlaceId, setFindingMobileForPlaceId] = useState<string | null>(null);
+  const [sendingForPlaceId, setSendingForPlaceId] = useState<string | null>(null);
+  const [sendResultForPlaceId, setSendResultForPlaceId] = useState<Record<string, { ok: boolean; error?: string }>>({});
+  const [expandedMessagePlaceId, setExpandedMessagePlaceId] = useState<string | null>(null);
+
+  const [selectedBarIds, setSelectedBarIds] = useState<Record<string, boolean>>({});
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const [whatsappSendResult, setWhatsappSendResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null);
+  const [gtmTab, setGtmTab] = useState<'find-bars' | 'reached-out'>('find-bars');
+
   const { data: leads = [], isLoading: leadsLoading } = useQuery<GtmLead[]>({
     queryKey: ['gtm', 'leads'],
     queryFn: () => api.get<GtmLead[]>('/gtm/leads'),
+  });
+
+  const { data: whatsappConversations = [], isLoading: whatsappConvosLoading } = useQuery<WhatsappConversation[]>({
+    queryKey: ['gtm', 'whatsapp', 'conversations'],
+    queryFn: () => api.get<WhatsappConversation[]>('/gtm/whatsapp/conversations'),
+  });
+
+  const { data: whatsappMessages = [] } = useQuery<WhatsappMessage[]>({
+    queryKey: ['gtm', 'whatsapp', 'messages', expandedConversationId],
+    queryFn: () =>
+      api.get<WhatsappMessage[]>(`/gtm/whatsapp/conversations/${expandedConversationId}/messages`),
+    enabled: !!expandedConversationId,
   });
 
   const handleResolve = async () => {
@@ -129,6 +188,170 @@ export default function SuperAdminGtm() {
     }
   };
 
+  const handleFindBarsByLocation = async () => {
+    const lat = parseFloat(latInput.trim());
+    const lng = parseFloat(lngInput.trim());
+    if (Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+    setFindingBarsByLocation(true);
+    setBarsFromLocation([]);
+    setRowEmails({});
+    setRowMobileOverrides({});
+    setRowContactNames({});
+    setRowMessages({});
+    setSendResultForPlaceId({});
+    setSelectedBarIds({});
+    try {
+      const result = await api.post<{ bars: BarFromLocation[] }>('/gtm/find-bars-by-location', { lat, lng });
+      setBarsFromLocation(result.bars ?? []);
+    } catch (e) {
+      console.log('Find bars by location failed', e);
+      setBarsFromLocation([]);
+    } finally {
+      setFindingBarsByLocation(false);
+    }
+  };
+
+  const buildOnboardingMessage = (
+    signupLink: string,
+    contactName?: string | null,
+  ): string => {
+    const name = (contactName?.trim() || 'there').replace(/\s+/g, ' ');
+    return `Hi ${name}, I'm Kartik from MuzoBox 🎶
+
+We help bars & restaurants boost customer engagement and drive extra revenue during non-DJ hours by letting your guests play music directly from their phones. With MuzoBox, your playlist is curated by you to match your venue's vibe, so customers choose from songs you've approved — keeping the music relevant and fun.
+
+Get started here: ${signupLink}`;
+  };
+
+  const fetchMessageForRow = async (bar: BarFromLocation) => {
+    const email = rowEmails[bar.placeId]?.trim();
+    const contactName = rowContactNames[bar.placeId]?.trim() || undefined;
+    if (!email) return;
+    try {
+      const result = await api.post<{ message: string; signupLink: string }>(
+        '/gtm/onboarding-message',
+        {
+          placeName: bar.name,
+          address: bar.address,
+          placeId: bar.placeId,
+          email,
+          contactName,
+        },
+      );
+      if (result.message)
+        setRowMessages((prev) => ({ ...prev, [bar.placeId]: result.message }));
+    } catch (e) {
+      console.log('Fetch onboarding message failed', e);
+    }
+  };
+
+  const handleFindMobileForRow = async (bar: BarFromLocation) => {
+    setFindingMobileForPlaceId(bar.placeId);
+    try {
+      const result = await api.post<{
+        mobile: string | null;
+        contactName: string | null;
+      }>('/gtm/find-mobile', {
+        venueName: bar.name,
+        address: bar.address,
+      });
+      if (result.mobile)
+        setRowMobileOverrides((prev) => ({
+          ...prev,
+          [bar.placeId]: result.mobile!,
+        }));
+      if (result.contactName)
+        setRowContactNames((prev) => ({
+          ...prev,
+          [bar.placeId]: result.contactName!,
+        }));
+      if (result.mobile || result.contactName)
+        setRowMessages((prev) => {
+          const next = { ...prev };
+          delete next[bar.placeId];
+          return next;
+        });
+    } catch (e) {
+      console.log('Find mobile failed', e);
+    } finally {
+      setFindingMobileForPlaceId(null);
+    }
+  };
+
+  const handleFindEmailForRow = async (website: string, placeId: string) => {
+    setFindingEmailForPlaceId(placeId);
+    try {
+      const result = await api.post<{ email: string | null }>('/gtm/find-email', { websiteUrl: website });
+      if (result.email) setRowEmails((prev) => ({ ...prev, [placeId]: result.email! }));
+    } catch (e) {
+      console.log('Find email failed', e);
+    } finally {
+      setFindingEmailForPlaceId(null);
+    }
+  };
+
+  const handleSendForRow = async (bar: BarFromLocation) => {
+    const mobile = rowMobileOverrides[bar.placeId] ?? bar.phone;
+    if (!mobile) return;
+    const message =
+      whatsappMessage.trim() ||
+      buildOnboardingMessage(
+        `${window.location.origin}/sample-bar?from=whatsapp-onboard`,
+        rowContactNames[bar.placeId] ?? null,
+      );
+    setSendingForPlaceId(bar.placeId);
+    setSendResultForPlaceId((prev) => ({ ...prev, [bar.placeId]: { ok: false } }));
+    try {
+      const result = await api.post<{ sent: number; failed: number }>('/gtm/whatsapp/send', {
+        bars: [{ phone: mobile, barName: bar.name }],
+        message,
+      });
+      const ok = result.sent > 0;
+      setSendResultForPlaceId((prev) => ({ ...prev, [bar.placeId]: { ok, error: ok ? undefined : 'Send failed' } }));
+      if (ok) queryClient.invalidateQueries({ queryKey: ['gtm', 'whatsapp', 'conversations'] });
+    } catch (e) {
+      setSendResultForPlaceId((prev) => ({
+        ...prev,
+        [bar.placeId]: { ok: false, error: e instanceof Error ? e.message : 'Failed to send' },
+      }));
+    } finally {
+      setSendingForPlaceId(null);
+    }
+  };
+
+  const toggleBarSelection = (placeId: string) => {
+    setSelectedBarIds((prev) => ({ ...prev, [placeId]: !prev[placeId] }));
+  };
+
+  const selectedBarsWithPhone = barsFromLocation.filter((bar) => {
+    const phone = rowMobileOverrides[bar.placeId] ?? bar.phone;
+    return phone && selectedBarIds[bar.placeId];
+  });
+
+  const handleSendWhatsapp = async () => {
+    if (selectedBarsWithPhone.length === 0 || !whatsappMessage.trim()) return;
+    setSendingWhatsapp(true);
+    setWhatsappSendResult(null);
+    try {
+      const result = await api.post<{ sent: number; failed: number }>('/gtm/whatsapp/send', {
+        bars: selectedBarsWithPhone.map((bar) => ({
+          phone: rowMobileOverrides[bar.placeId] ?? bar.phone,
+          barName: bar.name,
+        })),
+        message: whatsappMessage.trim(),
+      });
+      setWhatsappSendResult({ sent: result.sent, failed: result.failed });
+      if (result.sent > 0) {
+        queryClient.invalidateQueries({ queryKey: ['gtm', 'whatsapp', 'conversations'] });
+      }
+    } catch (e) {
+      console.log('Send WhatsApp failed', e);
+      setWhatsappSendResult({ sent: 0, failed: selectedBarsWithPhone.length });
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
+
   const copyLinkedInMessage = async (text: string, id?: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -160,17 +383,282 @@ export default function SuperAdminGtm() {
           GTM — Onboard a bar
         </h1>
         <p className="text-stone-500 text-sm mt-0.5">
-          Find bars by city (OpenAI) or paste a Google Maps link, resolve the place, then send an intro email.
+          Enter lat/lng to find bars in 5km radius (Google Maps), then send onboarding email or WhatsApp.
         </p>
+        <div className="flex gap-1 mt-4 border-b border-stone-200">
+          <button
+            type="button"
+            onClick={() => setGtmTab('find-bars')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              gtmTab === 'find-bars'
+                ? 'bg-white border border-stone-200 border-b-0 -mb-px text-stone-900'
+                : 'text-stone-500 hover:text-stone-700'
+            }`}
+          >
+            Find bars
+          </button>
+          <button
+            type="button"
+            onClick={() => setGtmTab('reached-out')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-1 ${
+              gtmTab === 'reached-out'
+                ? 'bg-white border border-stone-200 border-b-0 -mb-px text-stone-900'
+                : 'text-stone-500 hover:text-stone-700'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Reached out
+            {whatsappConversations.length > 0 && (
+              <span className="bg-stone-200 text-stone-700 text-xs px-1.5 rounded">
+                {whatsappConversations.length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
+      {gtmTab === 'find-bars' && (
+      <>
       <Card className="p-4 mb-5">
         <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
           <Building2 className="w-4 h-4 text-brand-600" />
-          Find bars by city
+          Find bars by location (5km radius)
         </h2>
         <p className="text-stone-500 text-xs mb-3">
-          Enter a city name (e.g. Gurgaon, Mumbai) and get top 100 bars with details including possible director/contact names.
+          Enter latitude and longitude of the area. Bars and night clubs within 5km will be listed with name, mobile, and onboarding message.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Latitude (e.g. 28.49)"
+            value={latInput}
+            onChange={(e) => setLatInput(e.target.value)}
+            className="w-36 bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
+          />
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Longitude (e.g. 77.08)"
+            value={lngInput}
+            onChange={(e) => setLngInput(e.target.value)}
+            className="w-36 bg-white border border-surface-border rounded-xl px-4 py-3 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
+          />
+          <Button
+            onClick={handleFindBarsByLocation}
+            loading={findingBarsByLocation}
+            disabled={!latInput.trim() || !lngInput.trim()}
+          >
+            <Search className="w-4 h-4 mr-1" />
+            Find bars
+          </Button>
+        </div>
+        {barsFromLocation.length > 0 && (
+          <>
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <textarea
+                placeholder="Message to send via WhatsApp (default: MuzoBox intro)"
+                value={whatsappMessage}
+                onChange={(e) => setWhatsappMessage(e.target.value)}
+                onFocus={() => {
+                  if (!whatsappMessage.trim()) {
+                    setWhatsappMessage(
+                      buildOnboardingMessage(
+                        `${window.location.origin}/sample-bar?from=whatsapp-onboard`,
+                        null,
+                      ),
+                    );
+                  }
+                }}
+                className="flex-1 min-w-[200px] min-h-[80px] bg-white border border-surface-border rounded-xl px-3 py-2 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 text-sm"
+              />
+              <Button
+                onClick={handleSendWhatsapp}
+                loading={sendingWhatsapp}
+                disabled={selectedBarsWithPhone.length === 0 || !whatsappMessage.trim()}
+                className="flex items-center gap-1"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Send WhatsApp ({selectedBarsWithPhone.length} selected)
+              </Button>
+            </div>
+            {whatsappSendResult && (
+              <p className="text-sm text-stone-600 mt-1">
+                Sent: {whatsappSendResult.sent}, Failed: {whatsappSendResult.failed}
+              </p>
+            )}
+            <div className="overflow-x-auto rounded-xl border border-stone-200 max-h-[520px] overflow-y-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 bg-stone-50 border-b border-stone-200 z-10">
+                <tr className="text-left text-stone-500 uppercase tracking-wider text-xs">
+                  <th className="py-2 px-2 font-medium w-10">WA</th>
+                  <th className="py-2 px-2 font-medium">#</th>
+                  <th className="py-2 px-2 font-medium">Name</th>
+                  <th className="py-2 px-2 font-medium">Mobile</th>
+                  <th className="py-2 px-2 font-medium">Address</th>
+                  <th className="py-2 px-2 font-medium">Email</th>
+                  <th className="py-2 px-2 font-medium">Message</th>
+                  <th className="py-2 px-2 font-medium">Send</th>
+                </tr>
+              </thead>
+              <tbody>
+                {barsFromLocation.map((bar, i) => {
+                  const rowEmail = rowEmails[bar.placeId] ?? '';
+                  const displayPhone = rowMobileOverrides[bar.placeId] ?? bar.phone;
+                  const genericLink = `${window.location.origin}/sample-bar?from=whatsapp-onboard`;
+                  const message =
+                    rowMessages[bar.placeId] ??
+                    buildOnboardingMessage(
+                      genericLink,
+                      rowContactNames[bar.placeId] || null,
+                    );
+                  const result = sendResultForPlaceId[bar.placeId];
+                  const isExpanded = expandedMessagePlaceId === bar.placeId;
+                  const hasPhone = !!(rowMobileOverrides[bar.placeId] ?? bar.phone);
+                  return (
+                    <tr key={bar.placeId} className="border-b border-stone-100 hover:bg-stone-50/50">
+                      <td className="py-2 px-2 align-top">
+                        {hasPhone ? (
+                          <input
+                            type="checkbox"
+                            checked={!!selectedBarIds[bar.placeId]}
+                            onChange={() => toggleBarSelection(bar.placeId)}
+                            className="rounded border-stone-300"
+                            aria-label={`Select ${bar.name} for WhatsApp`}
+                          />
+                        ) : (
+                          <span className="text-stone-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-stone-400 align-top">{i + 1}</td>
+                      <td className="py-2 px-2 font-medium text-stone-900 align-top max-w-[140px]">{bar.name}</td>
+                      <td className="py-2 px-2 text-stone-700 align-top">
+                        <div className="flex flex-col gap-1">
+                          {displayPhone ? (
+                            <a href={`tel:${displayPhone}`} className="text-brand-600 hover:underline whitespace-nowrap">
+                              {displayPhone}
+                            </a>
+                          ) : (
+                            <span className="text-stone-400">—</span>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleFindMobileForRow(bar)}
+                            loading={findingMobileForPlaceId === bar.placeId}
+                            disabled={findingMobileForPlaceId === bar.placeId}
+                            className="text-xs"
+                          >
+                            Find mobile (OpenAI)
+                          </Button>
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 text-stone-700 align-top max-w-[180px] truncate" title={bar.address}>
+                        {bar.address ?? '—'}
+                      </td>
+                      <td className="py-2 px-2 align-top">
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="email"
+                            placeholder="Enter or find"
+                            value={rowEmail}
+                            onChange={(e) =>
+                              setRowEmails((prev) => ({ ...prev, [bar.placeId]: e.target.value }))
+                            }
+                            onBlur={() => fetchMessageForRow(bar)}
+                            className="w-full min-w-[140px] bg-white border border-surface-border rounded-lg px-2 py-1.5 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-brand-500/30 text-xs"
+                          />
+                          {bar.website && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleFindEmailForRow(bar.website!, bar.placeId)}
+                              loading={findingEmailForPlaceId === bar.placeId}
+                              disabled={findingEmailForPlaceId === bar.placeId}
+                              className="text-xs"
+                            >
+                              Find from website
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 align-top max-w-[220px]">
+                        <div className="flex flex-col gap-1">
+                          <p
+                            className={`text-stone-600 whitespace-pre-wrap text-xs ${
+                              isExpanded ? '' : 'line-clamp-2'
+                            }`}
+                            title={message}
+                          >
+                            {message}
+                          </p>
+                          <div className="flex gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => copyLinkedInMessage(message, `msg-${bar.placeId}`)}
+                              className="flex items-center gap-1 text-xs"
+                            >
+                              <Copy className="w-3 h-3" />
+                              {linkedInCopiedId === `msg-${bar.placeId}` ? 'Copied!' : 'Copy'}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setExpandedMessagePlaceId((prev) =>
+                                  prev === bar.placeId ? null : bar.placeId,
+                                )
+                              }
+                              className="text-xs"
+                            >
+                              {isExpanded ? 'Collapse' : 'Expand'}
+                            </Button>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 align-top">
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSendForRow(bar)}
+                            loading={sendingForPlaceId === bar.placeId}
+                            disabled={!hasPhone || sendingForPlaceId === bar.placeId}
+                          >
+                            {result?.ok ? 'Sent' : 'Send'}
+                          </Button>
+                          {result && !result.ok && result.error && (
+                            <span className="text-xs text-red-600 max-w-[100px] truncate" title={result.error}>
+                              {result.error}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+        {findingBarsByLocation && barsFromLocation.length === 0 && (
+          <p className="text-stone-500 text-sm">Finding bars in 5km radius…</p>
+        )}
+      </Card>
+
+      <Card className="p-4 mb-5">
+        <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-stone-400" />
+          Alternatively: Find bars by city (OpenAI)
+        </h2>
+        <p className="text-stone-500 text-xs mb-3">
+          Enter a city name to get top 100 bars with details (no radius; uses OpenAI).
         </p>
         <div className="flex gap-2 mb-4">
           <input
@@ -426,6 +914,111 @@ export default function SuperAdminGtm() {
           </div>
         )}
       </Card>
+      </>
+      )}
+
+      {gtmTab === 'reached-out' && (
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-green-600" />
+            Reached out bars (WhatsApp)
+          </h2>
+          <p className="text-stone-500 text-xs mb-4">
+            Bars you’ve messaged via WhatsApp. Click a row to open the conversation.
+          </p>
+          {whatsappConvosLoading ? (
+            <p className="text-stone-500 text-sm">Loading…</p>
+          ) : whatsappConversations.length === 0 ? (
+            <p className="text-stone-500 text-sm">No reached-out bars yet. Use the Find bars tab to select bars and send WhatsApp.</p>
+          ) : (
+            <div className="flex gap-4">
+              <div className="flex-1 min-w-0 overflow-x-auto rounded-xl border border-stone-200 max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 bg-stone-50 border-b border-stone-200 z-10">
+                    <tr className="text-left text-stone-500 uppercase tracking-wider text-xs">
+                      <th className="py-2 px-2 font-medium">Bar / Phone</th>
+                      <th className="py-2 px-2 font-medium">Last message</th>
+                      <th className="py-2 px-2 font-medium">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {whatsappConversations.map((conv) => (
+                      <tr
+                        key={conv.id}
+                        className={`border-b border-stone-100 cursor-pointer transition-colors ${
+                          expandedConversationId === conv.id
+                            ? 'bg-green-50'
+                            : 'hover:bg-stone-50/50'
+                        }`}
+                        onClick={() =>
+                          setExpandedConversationId((prev) =>
+                            prev === conv.id ? null : conv.id,
+                          )
+                        }
+                      >
+                        <td className="py-3 px-2">
+                          <span className="font-medium text-stone-900 block">
+                            {conv.barName || conv.phone}
+                          </span>
+                          {conv.barName && (
+                            <span className="text-stone-500 text-xs">{conv.phone}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-2 text-stone-600 max-w-[220px] truncate" title={conv.lastMessagePreview ?? undefined}>
+                          {conv.lastMessagePreview ?? '—'}
+                        </td>
+                        <td className="py-3 px-2 text-stone-500 whitespace-nowrap">
+                          {conv.lastMessageAt ? formatDate(conv.lastMessageAt) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {expandedConversationId && (
+                <div className="w-[380px] shrink-0 flex flex-col rounded-xl border border-stone-200 bg-stone-50/50 max-h-[70vh]">
+                  <div className="p-3 border-b border-stone-200 flex items-center justify-between">
+                    <span className="text-sm font-medium text-stone-900">
+                      {whatsappConversations.find((c) => c.id === expandedConversationId)?.barName ||
+                        whatsappConversations.find((c) => c.id === expandedConversationId)?.phone ||
+                        'Conversation'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedConversationId(null)}
+                      className="text-stone-400 hover:text-stone-600 text-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                    {whatsappMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.direction === 'out' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[90%] rounded-lg px-3 py-2 ${
+                            msg.direction === 'out'
+                              ? 'bg-green-100 text-stone-900'
+                              : 'bg-white border border-stone-200 text-stone-800'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap text-sm">{msg.body}</p>
+                          <p className="text-xs text-stone-400 mt-1">
+                            {formatDate(msg.createdAt)}
+                            {msg.isAiReply && ' · AI reply'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

@@ -119,6 +119,11 @@ export class PaymentsService {
     this.logger.log(
       `Created payment ${payment.id} (QR ${qr.id}) for "${song.title}" at ${venue.name}`,
     );
+    if (razorpayOrderId) {
+      this.logger.log(
+        `Pay Online: Razorpay Order ID ${razorpayOrderId} for payment ${payment.id} (frontend polls with paymentId=${payment.id})`,
+      );
+    }
 
     return {
       orderId: payment.id,
@@ -195,6 +200,9 @@ export class PaymentsService {
       if (orderResponse?.id) {
         payment.razorpayOrderId = orderResponse.id;
         await this.paymentRepository.save(payment);
+        this.logger.log(
+          `Razorpay Order created: ${orderResponse.id} for payment ${payment.id} (Pay Online webhook will use this order_id)`,
+        );
         return orderResponse.id;
       }
     } catch (err) {
@@ -243,6 +251,9 @@ export class PaymentsService {
         this.logger.warn('Razorpay webhook: payment entity missing');
         return { received: true };
       }
+      this.logger.log(
+        `payment.captured: Razorpay order_id=${entity.order_id}, payment id=${entity.id} (order_id is QR id or Razorpay Order id for Pay Online)`,
+      );
       await this.handlePaymentCaptured(entity);
       return { received: true };
     }
@@ -358,6 +369,9 @@ export class PaymentsService {
       return null;
     }
 
+    this.logger.log(
+      `Looking up payment by razorpayQrId or razorpayOrderId: ${qrIdOrOrderId}`,
+    );
     const payment = await this.paymentRepository.findOne({
       where: [
         { razorpayQrId: qrIdOrOrderId },
@@ -365,9 +379,14 @@ export class PaymentsService {
       ],
     });
     if (!payment) {
-      this.logger.warn(`No payment found for QR/order ${qrIdOrOrderId}`);
+      this.logger.warn(
+        `No payment found for QR/order ${qrIdOrOrderId} (check DB has razorpay_order_id set for Pay Online)`,
+      );
       return null;
     }
+    this.logger.log(
+      `Found payment ${payment.id} (razorpayOrderId=${payment.razorpayOrderId ?? 'null'}, razorpayQrId=${payment.razorpayQrId ?? 'null'})`,
+    );
 
     return this.markPaymentPaidAndEnqueue(
       payment,
@@ -415,23 +434,38 @@ export class PaymentsService {
    * For QR flow, may sync payment status from Razorpay if not yet paid.
    */
   async getOrderStatus(orderIdOrPaymentId: string): Promise<OrderStatusResult> {
+    this.logger.log(
+      `getOrderStatus called with orderIdOrPaymentId=${orderIdOrPaymentId}`,
+    );
     const payment = await this.paymentRepository.findOne({
       where: { id: orderIdOrPaymentId },
     });
     if (!payment) {
+      this.logger.warn(
+        `getOrderStatus: no payment found for ${orderIdOrPaymentId}`,
+      );
       throw new NotFoundException('Order not found');
     }
 
     if (payment.status !== PaymentStatus.PAID && payment.razorpayQrId) {
+      this.logger.log(
+        `getOrderStatus: payment ${payment.id} not paid, syncing QR ${payment.razorpayQrId} from Razorpay (Pay Online uses webhook, not QR sync)`,
+      );
       await this.syncQrPaymentFromRazorpay(payment);
     }
 
     if (payment.status !== PaymentStatus.PAID) {
+      this.logger.log(
+        `getOrderStatus: returning status=created for payment ${payment.id} (razorpayOrderId=${payment.razorpayOrderId ?? 'null'})`,
+      );
       return { status: 'created' };
     }
 
     const queueItem = await this.queueService.getQueueItemWithEtaByPaymentId(
       payment.id,
+    );
+    this.logger.log(
+      `getOrderStatus: returning status=paid for payment ${payment.id}`,
     );
     return {
       status: 'paid',

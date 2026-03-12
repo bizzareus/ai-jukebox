@@ -433,7 +433,7 @@ export class QueueService {
       )
       .groupBy('q.customer_name')
       .addGroupBy('q.customer_mobile')
-      .orderBy('lastSeen', 'DESC')
+      .orderBy('"lastSeen"', 'DESC')
       .limit(limit)
       .getRawMany();
     return rows.map((r) => ({
