@@ -78,6 +78,9 @@ export default function SuperAdminGtm() {
   const [lngInput, setLngInput] = useState('');
   const [barsFromLocation, setBarsFromLocation] = useState<BarFromLocation[]>([]);
   const [findingBarsByLocation, setFindingBarsByLocation] = useState(false);
+  const [loadingMoreBars, setLoadingMoreBars] = useState(false);
+  const [hasMoreBars, setHasMoreBars] = useState(false);
+  const [barsPage, setBarsPage] = useState(0);
   const [rowEmails, setRowEmails] = useState<Record<string, string>>({});
   const [rowMobileOverrides, setRowMobileOverrides] = useState<Record<string, string>>({});
   const [rowContactNames, setRowContactNames] = useState<Record<string, string>>({});
@@ -201,13 +204,43 @@ export default function SuperAdminGtm() {
     setSendResultForPlaceId({});
     setSelectedBarIds({});
     try {
-      const result = await api.post<{ bars: BarFromLocation[] }>('/gtm/find-bars-by-location', { lat, lng });
+      const result = await api.post<{ bars: BarFromLocation[]; hasMore: boolean }>(
+        '/gtm/find-bars-by-location',
+        { lat: Number(lat), lng: Number(lng), page: 0 },
+      );
       setBarsFromLocation(result.bars ?? []);
+      setHasMoreBars(result.hasMore ?? false);
+      setBarsPage(0);
     } catch (e) {
       console.log('Find bars by location failed', e);
       setBarsFromLocation([]);
+      setHasMoreBars(false);
     } finally {
       setFindingBarsByLocation(false);
+    }
+  };
+
+  const handleLoadMoreBars = async () => {
+    const lat = Number.parseFloat(latInput.trim());
+    const lng = Number.parseFloat(lngInput.trim());
+    if (Number.isNaN(lat) || Number.isNaN(lng) || !hasMoreBars) return;
+    const nextPage = barsPage + 1;
+    setLoadingMoreBars(true);
+    try {
+      const result = await api.post<{ bars: BarFromLocation[]; hasMore: boolean }>(
+        '/gtm/find-bars-by-location',
+        { lat, lng, page: nextPage },
+      );
+      const newBars = result.bars ?? [];
+      const existingIds = new Set(barsFromLocation.map((b) => b.placeId));
+      const toAppend = newBars.filter((b) => !existingIds.has(b.placeId));
+      setBarsFromLocation((prev) => [...prev, ...toAppend]);
+      setHasMoreBars(result.hasMore ?? false);
+      setBarsPage(nextPage);
+    } catch (e) {
+      console.log('Load more bars failed', e);
+    } finally {
+      setLoadingMoreBars(false);
     }
   };
 
@@ -645,6 +678,19 @@ Get started here: ${signupLink}`;
               </tbody>
             </table>
           </div>
+            {hasMoreBars && (
+              <div className="mt-3 flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleLoadMoreBars}
+                  loading={loadingMoreBars}
+                  disabled={loadingMoreBars}
+                >
+                  {loadingMoreBars ? 'Loading…' : 'Load more bars'}
+                </Button>
+              </div>
+            )}
           </>
         )}
         {findingBarsByLocation && barsFromLocation.length === 0 && (

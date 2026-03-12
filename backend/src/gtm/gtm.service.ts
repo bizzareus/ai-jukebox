@@ -190,15 +190,34 @@ export class GtmService {
 
   private static readonly BARS_RADIUS_M = 5000;
 
+  /** Offsets (lat, lng) in degrees to request more pages (API returns max 20 per request). */
+  private static readonly BARS_PAGE_OFFSETS: [number, number][] = [
+    [0, 0],
+    [0.02, 0],
+    [-0.02, 0],
+    [0, 0.02],
+    [0, -0.02],
+    [0.02, 0.02],
+    [-0.02, 0.02],
+    [0.02, -0.02],
+    [-0.02, -0.02],
+  ];
+
   async findBarsByLocation(
     lat: number,
     lng: number,
-  ): Promise<BarFromLocation[]> {
+    page = 0,
+  ): Promise<{ bars: BarFromLocation[]; hasMore: boolean }> {
     const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
     if (!apiKey) {
       this.logger.warn('GOOGLE_PLACES_API_KEY not set');
-      return [];
+      return { bars: [], hasMore: false };
     }
+    const offsetIndex = Math.min(page, GtmService.BARS_PAGE_OFFSETS.length - 1);
+    const [latOff, lngOff] = GtmService.BARS_PAGE_OFFSETS[offsetIndex];
+    const centerLat = lat + latOff;
+    const centerLng = lng + lngOff;
+    const hasMore = page < GtmService.BARS_PAGE_OFFSETS.length - 1;
     try {
       const searchRes = await axios.post<{
         places?: Array<{
@@ -213,7 +232,7 @@ export class GtmService {
         {
           locationRestriction: {
             circle: {
-              center: { latitude: lat, longitude: lng },
+              center: { latitude: centerLat, longitude: centerLng },
               radius: GtmService.BARS_RADIUS_M,
             },
           },
@@ -259,12 +278,12 @@ export class GtmService {
       });
 
       this.logger.log(
-        `findBarsByLocation: ${bars.length} bars in 5km of (${lat}, ${lng}) (${allBars.length - bars.length} already contacted)`,
+        `findBarsByLocation: page ${page} → ${bars.length} bars (${allBars.length - bars.length} already contacted), hasMore=${hasMore}`,
       );
-      return bars;
+      return { bars, hasMore };
     } catch (e) {
       this.logger.warn('Places searchNearby failed', e);
-      return [];
+      return { bars: [], hasMore: false };
     }
   }
 
