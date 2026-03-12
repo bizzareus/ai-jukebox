@@ -24,7 +24,12 @@ export class WasenderApiService {
   /** Normalize phone to E.164 for WasenderAPI (e.g. 09266450404 or 9876543210 -> +919876543210). Strips leading 0 so Indian numbers are +91xxxxxxxxxx, never +0... */
   normalizePhone(phone: string): string {
     let digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('0') && digits.length === 11 && /^0[6-9]/.test(digits)) digits = digits.slice(1);
+    if (
+      digits.startsWith('0') &&
+      digits.length === 11 &&
+      /^0[6-9]/.test(digits)
+    )
+      digits = digits.slice(1);
     if (digits.length === 10 && /^[6-9]/.test(digits)) return `+91${digits}`;
     if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
     if (phone.startsWith('+') && digits.length >= 10) return `+${digits}`;

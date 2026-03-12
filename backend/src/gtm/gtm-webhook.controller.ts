@@ -8,7 +8,9 @@ export class GtmWebhookController {
 
   /** WasenderAPI sends incoming WhatsApp messages here. No auth (webhook). */
   @Post('webhooks/whatsapp')
-  async whatsappWebhook(@Body() payload: WasenderWebhookPayload): Promise<{ ok: boolean }> {
+  async whatsappWebhook(
+    @Body() payload: WasenderWebhookPayload,
+  ): Promise<{ ok: boolean }> {
     await this.gtmWhatsappService.handleWebhook(payload);
     return { ok: true };
   }

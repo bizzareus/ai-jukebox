@@ -31,7 +31,9 @@ export class GtmOnboardService {
     private readonly conversationRepo: Repository<GtmWhatsappConversation>,
   ) {}
 
-  async completeOnboard(dto: OnboardCompleteDto): Promise<OnboardCompleteResult> {
+  async completeOnboard(
+    dto: OnboardCompleteDto,
+  ): Promise<OnboardCompleteResult> {
     const conversation = await this.conversationRepo.findOne({
       where: { id: dto.conversationId },
     });

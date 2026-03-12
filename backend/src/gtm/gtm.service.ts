@@ -4,8 +4,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { GtmLead } from './gtm-lead.entity';
+import { GtmWhatsappConversation } from './gtm-whatsapp-conversation.entity';
 import { SendOnboardingDto } from './dto/send-onboarding.dto';
 import { InviteTokenService } from './invite-token.service';
+import { WasenderApiService } from './wasender-api.service';
 
 export interface ResolvedPlace {
   placeId: string;
@@ -60,7 +62,10 @@ export class GtmService {
     private readonly configService: ConfigService,
     @InjectRepository(GtmLead)
     private readonly gtmLeadRepository: Repository<GtmLead>,
+    @InjectRepository(GtmWhatsappConversation)
+    private readonly whatsappConversationRepo: Repository<GtmWhatsappConversation>,
     private readonly inviteTokenService: InviteTokenService,
+    private readonly wasenderApi: WasenderApiService,
   ) {}
 
   /** Extract place name and optional lat,lng from a Google Maps URL. */
@@ -226,7 +231,7 @@ export class GtmService {
         },
       );
       const places = searchRes.data?.places ?? [];
-      const bars: BarFromLocation[] = places
+      const allBars: BarFromLocation[] = places
         .filter((p) => p.id)
         .map((p) => {
           const rawPhone = p.nationalPhoneNumber;
@@ -240,8 +245,21 @@ export class GtmService {
             website: p.websiteUri,
           };
         });
+
+      const contactedPhones = new Set<string>();
+      const convos = await this.whatsappConversationRepo.find({
+        select: ['phone'],
+      });
+      convos.forEach((c) => contactedPhones.add(c.phone));
+
+      const bars = allBars.filter((bar) => {
+        if (!bar.phone) return true;
+        const normalized = this.wasenderApi.normalizePhone(bar.phone);
+        return !contactedPhones.has(normalized);
+      });
+
       this.logger.log(
-        `findBarsByLocation: ${bars.length} bars in 5km of (${lat}, ${lng})`,
+        `findBarsByLocation: ${bars.length} bars in 5km of (${lat}, ${lng}) (${allBars.length - bars.length} already contacted)`,
       );
       return bars;
     } catch (e) {
@@ -345,7 +363,6 @@ Return ONLY a valid JSON object with a single key "bars" whose value is an array
     dto: SendOnboardingDto,
     adminId?: string,
   ): Promise<{ ok: boolean; error?: string; linkedinMessage?: string }> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- DTO optional string
     const contactName: string | undefined =
       typeof dto.contactName === 'string' ? dto.contactName : undefined;
     const fromEmail =

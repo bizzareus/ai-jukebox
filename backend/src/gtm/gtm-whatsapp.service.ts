@@ -43,7 +43,9 @@ export class GtmWhatsappService {
   ) {}
 
   /** Send WhatsApp to selected bars; create conversation + outbound message per bar. Appends onboard link per conversation. */
-  async sendToBars(dto: SendWhatsappToBarsDto): Promise<{ sent: number; failed: number }> {
+  async sendToBars(
+    dto: SendWhatsappToBarsDto,
+  ): Promise<{ sent: number; failed: number }> {
     const baseUrl =
       this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
     let sent = 0;
@@ -72,7 +74,9 @@ export class GtmWhatsappService {
       }
       const demoLink = `${baseUrl}/sample-bar?from=whatsapp-onboard`;
       const messageWithLink =
-        dto.message.trim() + '\n\nCheck out MuzoBox and get onboarded: ' + demoLink;
+        dto.message.trim() +
+        '\n\nCheck out MuzoBox and get onboarded: ' +
+        demoLink;
       const result = await this.wasenderApi.sendTextMessage(
         phone,
         messageWithLink,
@@ -136,7 +140,9 @@ export class GtmWhatsappService {
   }
 
   /** Find conversations where last message is inbound and we haven't replied yet. */
-  private async getConversationsNeedingReply(): Promise<GtmWhatsappConversation[]> {
+  private async getConversationsNeedingReply(): Promise<
+    GtmWhatsappConversation[]
+  > {
     const convos = await this.conversationRepo.find({
       order: { updatedAt: 'DESC' },
       take: 100,
@@ -190,8 +196,7 @@ Reply in 1-3 short sentences. If they want to sign up, include the link. Do not 
           timeout: 15000,
         },
       );
-      const text =
-        res.data?.choices?.[0]?.message?.content?.trim() ?? '';
+      const text = res.data?.choices?.[0]?.message?.content?.trim() ?? '';
       return text;
     } catch (e) {
       this.logger.warn('OpenAI reply generation failed', e);
