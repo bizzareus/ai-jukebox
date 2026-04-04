@@ -12,10 +12,16 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentAdmin } from '../common/decorators/current-admin.decorator';
 import { Admin } from '../auth/admin.entity';
 import { ReplayDto } from './dto/replay.dto';
+import { FreeQueueDto } from './dto/free-queue.dto';
 
 @Controller('queue')
 export class QueueController {
   constructor(private readonly queueService: QueueService) {}
+
+  @Post('free-request')
+  freeRequest(@Body() dto: FreeQueueDto) {
+    return this.queueService.enqueueFreeRequest(dto);
+  }
 
   @Get(':venueId')
   getQueue(@Param('venueId') venueId: string) {
@@ -27,10 +33,27 @@ export class QueueController {
     return this.queueService.getNowPlaying(venueId);
   }
 
+  @Get(':venueId/history/daily-stats')
+  @UseGuards(JwtAuthGuard)
+  getHistoryDailyStats(
+    @Param('venueId') venueId: string,
+    @Query('days') days?: string,
+  ) {
+    const parsed = days ? parseInt(days, 10) : 30;
+    const n = Number.isFinite(parsed) ? parsed : 30;
+    return this.queueService.getDailyPlayCounts(venueId, n);
+  }
+
   @Get(':venueId/history')
   @UseGuards(JwtAuthGuard)
-  getHistory(@Param('venueId') venueId: string, @Query('date') date?: string) {
-    return this.queueService.getHistory(venueId, date);
+  getHistory(
+    @Param('venueId') venueId: string,
+    @Query('date') date?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = limit ? parseInt(limit, 10) : NaN;
+    const n = Number.isFinite(parsed) ? parsed : undefined;
+    return this.queueService.getHistory(venueId, date, n);
   }
 
   @Get(':venueId/recent-plays')

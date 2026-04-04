@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Music2, IndianRupee, Search } from 'lucide-react';
+import { ArrowLeft, Music2, IndianRupee, Search, ChevronRight } from 'lucide-react';
 import { api } from '../../services/api';
 import { Input } from '../../components/ui/Input';
 import { useQueue } from '../../hooks/useQueue';
@@ -124,17 +124,21 @@ export default function PlaylistView() {
                 <p className="text-stone-900 text-sm font-medium truncate">{ps.song.title}</p>
                 <p className="text-stone-500 text-xs truncate">{ps.song.artist ?? ps.song.channelName}</p>
               </div>
-              <div className="flex items-center gap-1 text-brand-600 flex-shrink-0">
-                <IndianRupee className="w-3.5 h-3.5" />
-                {venue?.discountAmount ? (
-                  <>
-                    <span className="line-through text-stone-400 text-xs">{venue.pricePerSong ?? 100}</span>
-                    <span className="text-sm font-semibold">{Math.max(1, (venue?.pricePerSong ?? 100) - venue.discountAmount)}</span>
-                  </>
-                ) : (
-                  <span className="text-sm font-semibold">{venue?.pricePerSong ?? 100}</span>
-                )}
-              </div>
+              {venue?.pricingEnabled === false ? (
+                <ChevronRight className="w-4 h-4 text-stone-400 flex-shrink-0" />
+              ) : (
+                <div className="flex items-center gap-1 text-brand-600 flex-shrink-0">
+                  <IndianRupee className="w-3.5 h-3.5" />
+                  {venue?.discountAmount ? (
+                    <>
+                      <span className="line-through text-stone-400 text-xs">{venue.pricePerSong ?? 100}</span>
+                      <span className="text-sm font-semibold">{Math.max(1, (venue?.pricePerSong ?? 100) - venue.discountAmount)}</span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-semibold">{venue?.pricePerSong ?? 100}</span>
+                  )}
+                </div>
+              )}
             </button>
           ))
         )}

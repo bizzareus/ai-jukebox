@@ -95,6 +95,12 @@ export class PaymentsService {
       this.songsService.findById(dto.songId),
     ]);
 
+    if (venue.pricingEnabled === false) {
+      throw new BadRequestException(
+        'Paid orders are not available for this venue. Add songs from the venue page without payment.',
+      );
+    }
+
     const amount = this.effectivePrice(venue);
     const amountPaise = amount * 100;
 

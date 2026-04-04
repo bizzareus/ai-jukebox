@@ -138,10 +138,14 @@ export class VenuesController {
     @Body() body: UpdateVenueDto,
     @CurrentAdmin() admin: Admin,
   ) {
-    const isSuperAdmin = admin.role === 'super_admin';
+    const isSuperAdmin = admin.role === AdminRole.SUPER_ADMIN;
     if (!isSuperAdmin && admin.venueId !== id) {
       throw new ForbiddenException('You can only update your own venue');
     }
-    return this.venuesService.update(id, body);
+    const dto: UpdateVenueDto = { ...body };
+    if (!isSuperAdmin) {
+      delete dto.pricingEnabled;
+    }
+    return this.venuesService.update(id, dto);
   }
 }

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS venues (
   upi_vpa VARCHAR(255) NOT NULL,
   price_per_song INT NOT NULL DEFAULT 100,
   discount_amount INT NOT NULL DEFAULT 0,
+  pricing_enabled BOOLEAN NOT NULL DEFAULT true,
   qr_code_url TEXT,
   owner_id UUID NOT NULL,
   settings_json JSONB NOT NULL DEFAULT '{}',
@@ -183,3 +184,6 @@ CROSS JOIN songs s
 WHERE p.venue_id = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d'::UUID
   AND NOT EXISTS (SELECT 1 FROM playlist_songs LIMIT 1)
 LIMIT 6;
+
+-- Existing databases: add pricing toggle if missing
+ALTER TABLE venues ADD COLUMN IF NOT EXISTS pricing_enabled BOOLEAN NOT NULL DEFAULT true;

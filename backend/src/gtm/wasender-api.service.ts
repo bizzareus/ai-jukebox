@@ -9,6 +9,8 @@ export interface WasenderSendMessageResult {
   msgId?: number;
   jid?: string;
   status?: string;
+  /** Set when send failed due to 429 after retry; bulk senders should wait and optionally retry. */
+  rateLimited?: boolean;
 }
 
 @Injectable()
@@ -101,6 +103,7 @@ export class WasenderApiService {
         this.logger.warn(
           'WasenderAPI rate limited (429) again after retry. Increase WASENDER_SEND_DELAY_MS or send fewer messages.',
         );
+        return { success: false, rateLimited: true };
       } else {
         const message = axios.isAxiosError(e)
           ? `${e.message}${e.response?.data ? ` — ${JSON.stringify(e.response.data)}` : ''}`

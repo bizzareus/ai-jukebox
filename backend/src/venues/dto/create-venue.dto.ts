@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsInt,
   IsOptional,
@@ -21,6 +22,10 @@ export class CreateVenueDto {
   @IsOptional()
   @Min(1)
   pricePerSong?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  pricingEnabled?: boolean;
 
   @IsEmail()
   adminEmail: string;

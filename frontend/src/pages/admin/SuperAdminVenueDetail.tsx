@@ -64,6 +64,7 @@ export default function SuperAdminVenueDetail() {
   const [editUpiVpa, setEditUpiVpa] = useState('');
   const [editPricePerSong, setEditPricePerSong] = useState(100);
   const [editDiscountAmount, setEditDiscountAmount] = useState(0);
+  const [editPricingEnabled, setEditPricingEnabled] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -118,8 +119,9 @@ export default function SuperAdminVenueDetail() {
       setEditUpiVpa(venue.upiVpa);
       setEditPricePerSong(venue.pricePerSong);
       setEditDiscountAmount(venue.discountAmount ?? 0);
+      setEditPricingEnabled(venue.pricingEnabled !== false);
     }
-  }, [venue?.id]);
+  }, [venue]);
 
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,13 +129,17 @@ export default function SuperAdminVenueDetail() {
     setEditError('');
     setSavingEdit(true);
     try {
-      await api.patch(`/venues/${venueId}`, {
+      const payload: Record<string, unknown> = {
         name: editName.trim(),
         slug: editSlug.trim(),
-        upiVpa: editUpiVpa.trim(),
-        pricePerSong: editPricePerSong,
-        discountAmount: editDiscountAmount,
-      });
+        pricingEnabled: editPricingEnabled,
+      };
+      if (editPricingEnabled) {
+        payload.upiVpa = editUpiVpa.trim();
+        payload.pricePerSong = editPricePerSong;
+        payload.discountAmount = editDiscountAmount;
+      }
+      await api.patch(`/venues/${venueId}`, payload);
       queryClient.invalidateQueries({ queryKey: ['venue', venueId] });
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Failed to update venue');
@@ -236,7 +242,12 @@ export default function SuperAdminVenueDetail() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-display text-2xl font-bold text-stone-900 truncate">{venue.name}</h1>
-          <p className="text-stone-500 text-sm">{venue.slug} · ₹{venue.pricePerSong}/song</p>
+          <p className="text-stone-500 text-sm">
+            {venue.slug}
+            {venue.pricingEnabled === false
+              ? ' · Pricing off (free queue)'
+              : ` · ₹${venue.pricePerSong}/song`}
+          </p>
         </div>
         <a
           href={`${frontendUrl}/${venue.slug}`}
@@ -258,9 +269,22 @@ export default function SuperAdminVenueDetail() {
         <form onSubmit={handleSaveDetails} className="flex flex-col gap-3">
           <Input label="Name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="My Bar" required />
           <Input label="Slug (URL)" value={editSlug} onChange={(e) => setEditSlug(e.target.value)} placeholder="my-bar" required />
-          <Input label="UPI VPA" value={editUpiVpa} onChange={(e) => setEditUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
-          <Input label="Price per song (₹)" type="number" value={String(editPricePerSong)} onChange={(e) => setEditPricePerSong(Number(e.target.value) || 100)} />
-          <Input label="Discount amount (₹)" type="number" value={String(editDiscountAmount)} onChange={(e) => setEditDiscountAmount(Math.max(0, Number(e.target.value) || 0))} />
+          <label className="flex items-center gap-2 text-sm text-stone-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editPricingEnabled}
+              onChange={(e) => setEditPricingEnabled(e.target.checked)}
+              className="rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span>Pricing enabled (customers pay per song)</span>
+          </label>
+          {editPricingEnabled && (
+            <>
+              <Input label="UPI VPA" value={editUpiVpa} onChange={(e) => setEditUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
+              <Input label="Price per song (₹)" type="number" value={String(editPricePerSong)} onChange={(e) => setEditPricePerSong(Number(e.target.value) || 100)} />
+              <Input label="Discount amount (₹)" type="number" value={String(editDiscountAmount)} onChange={(e) => setEditDiscountAmount(Math.max(0, Number(e.target.value) || 0))} />
+            </>
+          )}
           {editError && <p className="text-red-600 text-sm">{editError}</p>}
           <Button type="submit" loading={savingEdit}>Save changes</Button>
         </form>

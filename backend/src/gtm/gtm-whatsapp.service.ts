@@ -54,6 +54,9 @@ export class GtmWhatsappService {
       this.configService.get<string>('FRONTEND_URL') || 'https://muzobox.com';
     const delayBetweenSends =
       Number(this.configService.get<string>('WASENDER_SEND_DELAY_MS')) || 3000;
+    const rateLimitWaitMs =
+      Number(this.configService.get<string>('WASENDER_RATE_LIMIT_WAIT_MS')) ||
+      60_000;
     let sent = 0;
     let failed = 0;
     const total = dto.bars.length;
@@ -85,10 +88,20 @@ export class GtmWhatsappService {
         dto.message.trim() +
         '\n\nCheck out MuzoBox and get onboarded: ' +
         demoLink;
-      const result = await this.wasenderApi.sendTextMessage(
+      let result = await this.wasenderApi.sendTextMessage(
         phone,
         messageWithLink,
       );
+      if (!result?.success && result?.rateLimited) {
+        this.logger.warn(
+          `Bulk send: rate limited, waiting ${rateLimitWaitMs}ms before retry for ${phone}`,
+        );
+        await GtmWhatsappService.delayMs(rateLimitWaitMs);
+        result = await this.wasenderApi.sendTextMessage(
+          phone,
+          messageWithLink,
+        );
+      }
       if (result?.success) {
         await this.messageRepo.save(
           this.messageRepo.create({

@@ -22,6 +22,8 @@ export interface Venue {
   pricePerSong: number;
   /** Flat discount in ₹. Final price = pricePerSong - discountAmount (min 1). */
   discountAmount?: number;
+  /** When false, customers queue without payment. Omitted or true = priced flow. */
+  pricingEnabled?: boolean;
   qrCodeUrl?: string;
   /** Venue branding (e.g. logo for QR overlay). */
   settings?: { logoUrl?: string };

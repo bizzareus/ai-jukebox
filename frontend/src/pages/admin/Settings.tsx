@@ -368,48 +368,50 @@ export default function Settings() {
       </h1>
       <p className="text-stone-500 text-sm mb-5">{venue.name}</p>
 
-      <Card className="p-4 mb-5">
-        <h2 className="text-sm font-semibold text-stone-900 mb-3">Pricing</h2>
-        <p className="text-stone-500 text-xs mb-4">
-          Set the price per song and an optional flat discount (₹ off).
-          Customers see the discounted price.
-        </p>
-        <div className="flex flex-col gap-4">
-          <Input
-            label="Price per song (₹)"
-            type="number"
-            min={1}
-            value={String(pricePerSong)}
-            onChange={(e) =>
-              setPricePerSong(Math.max(0, Number(e.target.value) || 0))
-            }
-          />
-          <Input
-            label="Flat discount (₹ off)"
-            type="number"
-            min={0}
-            max={pricePerSong}
-            placeholder="0"
-            value={discountAmount === 0 ? "" : String(discountAmount)}
-            onChange={(e) => {
-              const v = Math.max(0, Number(e.target.value) || 0);
-              setDiscountAmount(Math.min(v, pricePerSong));
-            }}
-          />
-          {hasDiscount && (
-            <div className="flex items-center gap-2 text-sm text-stone-600 bg-brand-50 rounded-xl p-3">
-              <Tag className="w-4 h-4 text-brand-600 shrink-0" />
-              <span>
-                Customer pays <strong>₹{effectivePrice}</strong>
-                {effectivePrice < pricePerSong && <> (was ₹{pricePerSong})</>}
-              </span>
-            </div>
-          )}
-          <Button onClick={handleSave} loading={saving}>
-            {saved ? "Saved" : "Save"}
-          </Button>
-        </div>
-      </Card>
+      {venue.pricingEnabled !== false && (
+        <Card className="p-4 mb-5">
+          <h2 className="text-sm font-semibold text-stone-900 mb-3">Pricing</h2>
+          <p className="text-stone-500 text-xs mb-4">
+            Set the price per song and an optional flat discount (₹ off).
+            Customers see the discounted price.
+          </p>
+          <div className="flex flex-col gap-4">
+            <Input
+              label="Price per song (₹)"
+              type="number"
+              min={1}
+              value={String(pricePerSong)}
+              onChange={(e) =>
+                setPricePerSong(Math.max(0, Number(e.target.value) || 0))
+              }
+            />
+            <Input
+              label="Flat discount (₹ off)"
+              type="number"
+              min={0}
+              max={pricePerSong}
+              placeholder="0"
+              value={discountAmount === 0 ? "" : String(discountAmount)}
+              onChange={(e) => {
+                const v = Math.max(0, Number(e.target.value) || 0);
+                setDiscountAmount(Math.min(v, pricePerSong));
+              }}
+            />
+            {hasDiscount && (
+              <div className="flex items-center gap-2 text-sm text-stone-600 bg-brand-50 rounded-xl p-3">
+                <Tag className="w-4 h-4 text-brand-600 shrink-0" />
+                <span>
+                  Customer pays <strong>₹{effectivePrice}</strong>
+                  {effectivePrice < pricePerSong && <> (was ₹{pricePerSong})</>}
+                </span>
+              </div>
+            )}
+            <Button onClick={handleSave} loading={saving}>
+              {saved ? "Saved" : "Save"}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4 mb-5">
         <h2

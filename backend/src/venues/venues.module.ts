@@ -11,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
   imports: [
     TypeOrmModule.forFeature([Venue]),
     PlaylistsModule,
-    QueueModule,
+    forwardRef(() => QueueModule),
     forwardRef(() => AuthModule),
   ],
   controllers: [VenuesController],

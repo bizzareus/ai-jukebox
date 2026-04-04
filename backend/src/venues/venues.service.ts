@@ -95,6 +95,7 @@ export class VenuesService {
       upiVpa: dto.upiVpa,
       ownerId,
       pricePerSong: dto.pricePerSong ?? 100,
+      pricingEnabled: dto.pricingEnabled !== false,
     });
 
     const saved = await this.venueRepository.save(venue);
@@ -143,7 +144,12 @@ export class VenuesService {
     const updates: Partial<
       Pick<
         Venue,
-        'name' | 'slug' | 'upiVpa' | 'pricePerSong' | 'discountAmount'
+        | 'name'
+        | 'slug'
+        | 'upiVpa'
+        | 'pricePerSong'
+        | 'discountAmount'
+        | 'pricingEnabled'
       >
     > & {
       settings?: Record<string, unknown>;
@@ -155,6 +161,9 @@ export class VenuesService {
     if (dto.discountAmount !== undefined) {
       const maxPrice = dto.pricePerSong ?? venue.pricePerSong;
       updates.discountAmount = Math.min(dto.discountAmount, maxPrice);
+    }
+    if (dto.pricingEnabled !== undefined) {
+      updates.pricingEnabled = dto.pricingEnabled;
     }
     if (dto.logoUrl !== undefined) {
       updates.settings = { ...(venue.settings ?? {}), logoUrl: dto.logoUrl };

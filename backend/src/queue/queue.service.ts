@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { QueueItem, QueueItemStatus } from './queue-item.entity';
@@ -8,6 +15,7 @@ import { PlaylistsService } from '../playlists/playlists.service';
 import { SongsService } from '../songs/songs.service';
 import { Song } from '../songs/song.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { VenuesService } from '../venues/venues.service';
 
 const AUTO_PLAY_RECENT_HOURS = 2;
 
@@ -24,6 +32,8 @@ export class QueueService {
     private readonly playlistsService: PlaylistsService,
     private readonly songsService: SongsService,
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => VenuesService))
+    private readonly venuesService: VenuesService,
   ) {}
 
   /** Called by payment webhook after payment is confirmed */
@@ -78,6 +88,64 @@ export class QueueService {
     }
 
     return saved;
+  }
+
+  /**
+   * Public: enqueue without payment when the venue has pricing disabled.
+   */
+  async enqueueFreeRequest(dto: {
+    venueId: string;
+    songId: string;
+    customerName?: string;
+    customerMobile?: string;
+  }): Promise<{
+    queueItem: { id: string; position: number };
+    position: number;
+    eta: number;
+  }> {
+    const venue = await this.venuesService.findById(dto.venueId);
+    if (venue.pricingEnabled !== false) {
+      throw new BadRequestException(
+        'Free queue is only available when pricing is disabled for this venue.',
+      );
+    }
+    await this.songsService.findById(dto.songId);
+
+    const position = await this.getNextPosition(dto.venueId);
+    const item = this.queueRepository.create({
+      venueId: dto.venueId,
+      songId: dto.songId,
+      customerName: dto.customerName,
+      customerMobile: dto.customerMobile,
+      status: QueueItemStatus.PENDING,
+      position,
+    });
+
+    const saved = await this.queueRepository.save(item);
+    this.logger.log(
+      `Free-enqueued song at position ${position} for venue ${dto.venueId}`,
+    );
+
+    const queue = await this.getVenueQueue(dto.venueId);
+    this.queueGateway.emitQueueUpdated(dto.venueId, queue);
+
+    const eta = this.calculateEta(queue, saved.id);
+
+    try {
+      const song = await this.songsService.findById(dto.songId);
+      await this.notificationsService.notifyAdminNewSongQueued(
+        dto.venueId,
+        song.title,
+      );
+    } catch {
+      // ignore
+    }
+
+    return {
+      queueItem: { id: saved.id, position: saved.position },
+      position: saved.position,
+      eta,
+    };
   }
 
   async getVenueQueue(venueId: string): Promise<QueueItem[]> {
@@ -249,7 +317,7 @@ export class QueueService {
     }));
   }
 
-  async getHistory(venueId: string, date?: string) {
+  async getHistory(venueId: string, date?: string, limit?: number) {
     const qb = this.queueRepository
       .createQueryBuilder('q')
       .leftJoinAndSelect('q.song', 'song')
@@ -267,7 +335,65 @@ export class QueueService {
       qb.andWhere('q.played_at BETWEEN :start AND :end', { start, end });
     }
 
-    return qb.orderBy('q.played_at', 'DESC').getMany();
+    qb.orderBy('q.played_at', 'DESC');
+    if (limit != null && limit > 0) {
+      qb.take(Math.min(limit, 500));
+    }
+    return qb.getMany();
+  }
+
+  /**
+   * Count of completed plays per calendar day (UTC), last N days inclusive of today.
+   * Missing days are returned with count 0.
+   */
+  async getDailyPlayCounts(
+    venueId: string,
+    numDays: number,
+  ): Promise<{ date: string; count: number }[]> {
+    const safeDays = Math.min(90, Math.max(1, Math.floor(numDays)));
+    const now = new Date();
+    const endUtc = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
+    const startUtc = new Date(endUtc);
+    startUtc.setUTCDate(startUtc.getUTCDate() - (safeDays - 1));
+    startUtc.setUTCHours(0, 0, 0, 0);
+
+    const rows = await this.queueRepository
+      .createQueryBuilder('q')
+      .select(
+        "to_char((q.played_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD')",
+        'date',
+      )
+      .addSelect('COUNT(*)', 'count')
+      .where('q.venue_id = :venueId', { venueId })
+      .andWhere('q.status = :status', { status: QueueItemStatus.PLAYED })
+      .andWhere('q.played_at IS NOT NULL')
+      .andWhere('q.played_at >= :start AND q.played_at <= :end', {
+        start: startUtc,
+        end: endUtc,
+      })
+      .groupBy("(q.played_at AT TIME ZONE 'UTC')::date")
+      .orderBy("(q.played_at AT TIME ZONE 'UTC')::date", 'ASC')
+      .getRawMany<{ date: string; count: string }>();
+
+    const byDate = new Map(
+      rows.map((r) => [r.date, parseInt(r.count, 10)] as const),
+    );
+    const out: { date: string; count: number }[] = [];
+    for (let t = startUtc.getTime(); t <= endUtc.getTime(); t += 86_400_000) {
+      const key = new Date(t).toISOString().slice(0, 10);
+      out.push({ date: key, count: byDate.get(key) ?? 0 });
+    }
+    return out;
   }
 
   /** Last N played/skipped items for DJ replay. */

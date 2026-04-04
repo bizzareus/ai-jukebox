@@ -16,6 +16,7 @@ export default function SuperAdminVenues() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [upiVpa, setUpiVpa] = useState('');
+  const [createPricingEnabled, setCreatePricingEnabled] = useState(true);
   const [pricePerSong, setPricePerSong] = useState(100);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -34,6 +35,7 @@ export default function SuperAdminVenues() {
   const [editUpiVpa, setEditUpiVpa] = useState('');
   const [editPricePerSong, setEditPricePerSong] = useState(100);
   const [editDiscountAmount, setEditDiscountAmount] = useState(0);
+  const [editPricingEnabled, setEditPricingEnabled] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -51,8 +53,9 @@ export default function SuperAdminVenues() {
       await api.post('/venues', {
         name,
         slug: slug.trim(),
-        upiVpa: upiVpa.trim(),
-        pricePerSong,
+        upiVpa: createPricingEnabled ? upiVpa.trim() : 'pending@venue',
+        ...(createPricingEnabled ? { pricePerSong } : {}),
+        pricingEnabled: createPricingEnabled,
         adminEmail: adminEmail.trim(),
         adminPassword,
         adminName: adminName.trim() || undefined,
@@ -61,6 +64,7 @@ export default function SuperAdminVenues() {
       setName('');
       setSlug('');
       setUpiVpa('');
+      setCreatePricingEnabled(true);
       setPricePerSong(100);
       setAdminEmail('');
       setAdminPassword('');
@@ -82,6 +86,7 @@ export default function SuperAdminVenues() {
     setEditUpiVpa(v.upiVpa);
     setEditPricePerSong(v.pricePerSong);
     setEditDiscountAmount(v.discountAmount ?? 0);
+    setEditPricingEnabled(v.pricingEnabled !== false);
     setEditError('');
   };
 
@@ -90,13 +95,17 @@ export default function SuperAdminVenues() {
     setEditError('');
     setSavingEdit(true);
     try {
-      await api.patch(`/venues/${venueId}`, {
+      const payload: Record<string, unknown> = {
         name: editName.trim(),
         slug: editSlug.trim(),
-        upiVpa: editUpiVpa.trim(),
-        pricePerSong: editPricePerSong,
-        discountAmount: editDiscountAmount,
-      });
+        pricingEnabled: editPricingEnabled,
+      };
+      if (editPricingEnabled) {
+        payload.upiVpa = editUpiVpa.trim();
+        payload.pricePerSong = editPricePerSong;
+        payload.discountAmount = editDiscountAmount;
+      }
+      await api.patch(`/venues/${venueId}`, payload);
       queryClient.invalidateQueries({ queryKey: ['venues', 'mine'] });
       setEditVenueId(null);
     } catch (err: unknown) {
@@ -144,8 +153,21 @@ export default function SuperAdminVenues() {
           <form onSubmit={handleCreate} className="flex flex-col gap-3">
             <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="My Bar" required />
             <Input label="Slug (URL)" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="my-bar" required />
-            <Input label="UPI VPA" value={upiVpa} onChange={(e) => setUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
-            <Input label="Price per song (₹)" type="number" value={String(pricePerSong)} onChange={(e) => setPricePerSong(Number(e.target.value) || 100)} />
+            <label className="flex items-center gap-2 text-sm text-stone-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createPricingEnabled}
+                onChange={(e) => setCreatePricingEnabled(e.target.checked)}
+                className="rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>Pricing enabled (customers pay per song)</span>
+            </label>
+            {createPricingEnabled && (
+              <>
+                <Input label="UPI VPA" value={upiVpa} onChange={(e) => setUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
+                <Input label="Price per song (₹)" type="number" value={String(pricePerSong)} onChange={(e) => setPricePerSong(Number(e.target.value) || 100)} />
+              </>
+            )}
             <hr className="border-stone-200 my-1" />
             <p className="text-sm font-medium text-stone-700">Venue admin (first login for this bar)</p>
             <Input label="Admin email" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@bar.com" required />
@@ -175,7 +197,12 @@ export default function SuperAdminVenues() {
                 <div className="flex-1 min-w-0">
                   <Link to={`/admin/venues/${v.id}`} className="block hover:opacity-80">
                     <p className="font-semibold text-stone-900 truncate">{v.name}</p>
-                    <p className="text-stone-500 text-xs">{v.slug} · ₹{v.pricePerSong}/song</p>
+                    <p className="text-stone-500 text-xs">
+                      {v.slug}
+                      {v.pricingEnabled === false
+                        ? ' · Pricing off (free queue)'
+                        : ` · ₹${v.pricePerSong}/song`}
+                    </p>
                   </Link>
                 </div>
                 <Link to={`/admin/venues/${v.id}`}>
@@ -211,9 +238,22 @@ export default function SuperAdminVenues() {
                   <form onSubmit={(e) => handleEdit(e, v.id)} className="flex flex-col gap-3">
                     <Input label="Name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="My Bar" required />
                     <Input label="Slug (URL)" value={editSlug} onChange={(e) => setEditSlug(e.target.value)} placeholder="my-bar" required />
-                    <Input label="UPI VPA" value={editUpiVpa} onChange={(e) => setEditUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
-                    <Input label="Price per song (₹)" type="number" value={String(editPricePerSong)} onChange={(e) => setEditPricePerSong(Number(e.target.value) || 100)} />
-                    <Input label="Discount amount (₹)" type="number" value={String(editDiscountAmount)} onChange={(e) => setEditDiscountAmount(Math.max(0, Number(e.target.value) || 0))} />
+                    <label className="flex items-center gap-2 text-sm text-stone-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPricingEnabled}
+                        onChange={(e) => setEditPricingEnabled(e.target.checked)}
+                        className="rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <span>Pricing enabled (customers pay per song)</span>
+                    </label>
+                    {editPricingEnabled && (
+                      <>
+                        <Input label="UPI VPA" value={editUpiVpa} onChange={(e) => setEditUpiVpa(e.target.value)} placeholder="bar@okaxis" required />
+                        <Input label="Price per song (₹)" type="number" value={String(editPricePerSong)} onChange={(e) => setEditPricePerSong(Number(e.target.value) || 100)} />
+                        <Input label="Discount amount (₹)" type="number" value={String(editDiscountAmount)} onChange={(e) => setEditDiscountAmount(Math.max(0, Number(e.target.value) || 0))} />
+                      </>
+                    )}
                     {editError && <p className="text-red-600 text-sm">{editError}</p>}
                     <div className="flex gap-2">
                       <Button type="submit" loading={savingEdit}>Save</Button>

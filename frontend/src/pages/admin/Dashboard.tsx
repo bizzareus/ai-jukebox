@@ -5,7 +5,7 @@ import { Card } from '../../components/ui/Card';
 import { useQueue } from '../../hooks/useQueue';
 import { authService } from '../../services/auth';
 import { QueueItemStatus } from '../../types';
-import type { QueueItem } from '../../types';
+import type { QueueItem, Venue } from '../../types';
 
 interface EarningsData {
   total: number;
@@ -13,16 +13,39 @@ interface EarningsData {
   payments: { amount: number; createdAt: string }[];
 }
 
+type DailyPlayRow = { date: string; count: number };
+
 export default function AdminDashboard() {
   const admin = authService.getStoredAdmin();
   const venueId = admin?.venueId;
 
   const today = new Date().toISOString().split('T')[0];
 
+  const {
+    data: venue,
+    isLoading: venueLoading,
+    isError: venueError,
+  } = useQuery<Venue>({
+    queryKey: ['venue', 'current'],
+    queryFn: () => api.get<Venue>('/venues/current'),
+    enabled: !!venueId,
+  });
+
+  const pricingOn = venue?.pricingEnabled !== false;
+
   const { data: earnings } = useQuery<EarningsData>({
     queryKey: ['earnings', venueId, today],
-    queryFn: () => api.get<EarningsData>(`/payments/earnings?startDate=${today}T00:00:00&endDate=${today}T23:59:59`),
-    enabled: !!venueId,
+    queryFn: () =>
+      api.get<EarningsData>(
+        `/payments/earnings?startDate=${today}T00:00:00&endDate=${today}T23:59:59`,
+      ),
+    enabled: !!venueId && !!venue && pricingOn,
+  });
+
+  const { data: todayPlays = [], isFetching: todayPlaysLoading } = useQuery<DailyPlayRow[]>({
+    queryKey: ['queue', 'daily-stats', venueId, 1],
+    queryFn: () => api.get<DailyPlayRow[]>(`/queue/${venueId}/history/daily-stats?days=1`),
+    enabled: !!venueId && !!venue && !pricingOn,
   });
 
   const { data: queue = [] } = useQueue(venueId);
@@ -30,26 +53,61 @@ export default function AdminDashboard() {
   const nowPlaying = queue.find((i) => i.status === QueueItemStatus.PLAYING);
   const pending = queue.filter((i) => i.status === QueueItemStatus.PENDING);
 
-  const stats = [
-    {
+  const songsPlayedToday = pricingOn
+    ? (earnings?.count ?? 0)
+    : (todayPlays[0]?.count ?? 0);
+
+  const stats: {
+    label: string;
+    value: string | number;
+    icon: typeof IndianRupee;
+    color: string;
+  }[] = [];
+
+  if (pricingOn) {
+    stats.push({
       label: "Today's Earnings",
       value: `₹${earnings?.total ?? 0}`,
       icon: IndianRupee,
       color: 'text-green-600',
-    },
-    {
-      label: 'Songs Played',
-      value: earnings?.count ?? 0,
-      icon: Music2,
-      color: 'text-brand-600',
-    },
-    {
-      label: 'In Queue',
-      value: pending.length,
-      icon: ListMusic,
-      color: 'text-blue-600',
-    },
-  ];
+    });
+  }
+
+  stats.push({
+    label: 'Songs Played',
+    value:
+      !pricingOn && (venueLoading || todayPlaysLoading) && venueId
+        ? '…'
+        : songsPlayedToday,
+    icon: Music2,
+    color: 'text-brand-600',
+  });
+
+  stats.push({
+    label: 'In Queue',
+    value: pending.length,
+    icon: ListMusic,
+    color: 'text-blue-600',
+  });
+
+  const statsGridClass =
+    stats.length === 3 ? 'grid grid-cols-3 gap-3 mb-6' : 'grid grid-cols-2 gap-3 mb-6';
+
+  if (venueId && venueLoading) {
+    return (
+      <div className="px-4 pt-6 pb-4 flex justify-center py-12">
+        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (venueId && (venueError || !venue)) {
+    return (
+      <div className="px-4 pt-6 pb-4">
+        <p className="text-stone-500 text-sm">Could not load venue settings.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pt-6 pb-4">
@@ -59,7 +117,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className={statsGridClass}>
         {stats.map((s) => (
           <Card key={s.label} className="p-3">
             <s.icon className={`w-5 h-5 ${s.color} mb-2`} />

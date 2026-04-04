@@ -178,16 +178,22 @@ export default function VenueHome() {
         </div>
         <h1 className="font-display text-3xl font-bold text-stone-900">{venue.name}</h1>
         <p className="text-stone-500 text-sm mt-1">
-          Pick a song, pay{' '}
-          {venue.discountAmount ? (
-            <>
-              <span className="line-through text-stone-400">₹{venue.pricePerSong}</span>
-              <span className="text-brand-600 font-medium"> ₹{Math.max(1, venue.pricePerSong - venue.discountAmount)}</span>
-            </>
-          ) : (
-            <>₹{venue.pricePerSong}</>
-          )}{' '}
-          to queue it
+          {venue.pricingEnabled === false
+            ? 'Pick a song to add it to the queue'
+            : (
+              <>
+                Pick a song, pay{' '}
+                {venue.discountAmount ? (
+                  <>
+                    <span className="line-through text-stone-400">₹{venue.pricePerSong}</span>
+                    <span className="text-brand-600 font-medium"> ₹{Math.max(1, venue.pricePerSong - venue.discountAmount)}</span>
+                  </>
+                ) : (
+                  <>₹{venue.pricePerSong}</>
+                )}{' '}
+                to queue it
+              </>
+            )}
         </p>
       </div>
 

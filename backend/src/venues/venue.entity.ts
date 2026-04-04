@@ -27,6 +27,10 @@ export class Venue {
   @Column({ name: 'discount_amount', type: 'int', default: 0 })
   discountAmount: number;
 
+  /** When false, customers queue without payment; venue admins cannot edit pricing. */
+  @Column({ name: 'pricing_enabled', default: true })
+  pricingEnabled: boolean;
+
   @Column({ name: 'qr_code_url', nullable: true })
   qrCodeUrl: string;
 

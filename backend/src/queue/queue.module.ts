@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { QueueItem } from './queue-item.entity';
 import { QueueService } from './queue.service';
@@ -8,6 +8,7 @@ import { Payment } from '../payments/payment.entity';
 import { PlaylistsModule } from '../playlists/playlists.module';
 import { SongsModule } from '../songs/songs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { VenuesModule } from '../venues/venues.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PlaylistsModule,
     SongsModule,
     NotificationsModule,
+    forwardRef(() => VenuesModule),
   ],
   controllers: [QueueController],
   providers: [QueueService, QueueGateway],
