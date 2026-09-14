@@ -89,6 +89,19 @@ export class ProxyPayment {
   })
   razorpayPaymentId: string | null;
 
+  /**
+   * Razorpay UPI QR id (upi_qr, single_use) shown on the hosted `/pay/:id`
+   * page. QR payments credit via the `qr_code.credited` webhook.
+   */
+  @Column({
+    name: 'razorpay_qr_id',
+    type: 'varchar',
+    length: 255,
+    unique: true,
+    nullable: true,
+  })
+  razorpayQrId: string | null;
+
   @Column({ name: 'callback_status', type: 'varchar', length: 32, nullable: true })
   callbackStatus: string | null;
 

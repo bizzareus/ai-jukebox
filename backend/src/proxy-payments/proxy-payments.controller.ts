@@ -72,6 +72,13 @@ export class ProxyPaymentsController {
     return this.proxy.ensureOrder(id.trim());
   }
 
+  /** Public: (re)create the UPI QR intent string if the page needs it. */
+  @Post(':id/ensure-qr')
+  ensureQr(@Param('id') id: string) {
+    if (!id?.trim()) throw new BadRequestException('id is required');
+    return this.proxy.ensureQr(id.trim());
+  }
+
   /**
    * Public: pollable status + final redirect URL.
    * lastberth backend can also use this server-to-server to verify payment.

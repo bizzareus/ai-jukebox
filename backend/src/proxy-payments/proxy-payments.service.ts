@@ -13,8 +13,17 @@ import Razorpay from 'razorpay';
 import { validateWebhookSignature } from 'razorpay/dist/utils/razorpay-utils';
 import { ProxyPayment, ProxyPaymentStatus } from './proxy-payment.entity';
 import { CreateProxyPaymentDto } from './dto/create-proxy-payment.dto';
-import { RAZORPAY_RECEIPT_MAX_LENGTH } from '../payments/payments.constants';
-import type { RazorpayOrderCreateResponse } from '../payments/types/razorpay.types';
+import {
+  QR_CLOSE_BY_SECONDS,
+  QR_FETCH_PAYMENTS_COUNT,
+  RAZORPAY_DESCRIPTION_MAX_LENGTH,
+  RAZORPAY_RECEIPT_MAX_LENGTH,
+} from '../payments/payments.constants';
+import type {
+  RazorpayOrderCreateResponse,
+  RazorpayQrFetchPaymentsResponse,
+  RazorpayQrFetchResponse,
+} from '../payments/types/razorpay.types';
 
 export interface ProxyPaymentCreateResult {
   id: string;
@@ -25,6 +34,8 @@ export interface ProxyPaymentCreateResult {
   referenceId?: string;
   razorpayOrderId?: string;
   razorpayKeyId?: string;
+  /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
+  upiString?: string;
 }
 
 export interface ProxyPaymentPublic {
@@ -35,6 +46,8 @@ export interface ProxyPaymentPublic {
   status: ProxyPaymentStatus;
   razorpayOrderId: string | null;
   razorpayKeyId?: string;
+  /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
+  upiString?: string;
 }
 
 export interface ProxyPaymentStatusResult {
@@ -86,6 +99,9 @@ export class ProxyPaymentsService {
     const saved = await this.repo.save(payment);
 
     const razorpayOrderId = await this.ensureRazorpayOrder(saved);
+    // Best-effort: the pay page prefers the UPI QR and falls back to
+    // Razorpay Checkout when QR creation is unavailable.
+    const upiString = await this.ensureRazorpayQr(saved);
 
     this.logger.log(
       `Proxy payment ${saved.id} created: ₹${saved.amount} ref=${saved.referenceId ?? 'n/a'} → ${this.buildPayUrl(saved.id)}`,
@@ -100,6 +116,7 @@ export class ProxyPaymentsService {
       referenceId: saved.referenceId ?? undefined,
       razorpayOrderId: razorpayOrderId ?? undefined,
       razorpayKeyId: keyId,
+      upiString: upiString || undefined,
     };
   }
 
@@ -107,7 +124,17 @@ export class ProxyPaymentsService {
 
   async getPublic(id: string): Promise<ProxyPaymentPublic> {
     const payment = await this.findOrThrow(id);
-    return this.toPublic(payment);
+    return this.toPublic(payment, await this.fetchQrContent(payment));
+  }
+
+  /** Public: (re)create the UPI QR content if the page needs it. */
+  async ensureQr(id: string): Promise<{ upiString: string }> {
+    const payment = await this.findOrThrow(id);
+    const upiString = await this.ensureRazorpayQr(payment);
+    if (!upiString) {
+      throw new BadRequestException('Could not create UPI QR');
+    }
+    return { upiString };
   }
 
   async ensureOrder(id: string): Promise<{ razorpayOrderId: string; razorpayKeyId: string }> {
@@ -219,16 +246,45 @@ export class ProxyPaymentsService {
         this.logger.warn('Proxy webhook: missing order_id/payment id');
       }
     }
+
+    if (event === 'qr_code.credited') {
+      const qrEntity =
+        payload?.payload?.qr_code?.entity ?? payload?.qr_code?.entity;
+      const qrId: string | undefined = qrEntity?.id;
+      const paymentEntity =
+        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
+      if (!qrId) {
+        this.logger.warn('Proxy webhook: qr_code entity missing');
+      } else {
+        const payment = await this.repo.findOne({
+          where: { razorpayQrId: qrId },
+        });
+        if (!payment) {
+          this.logger.warn(`Proxy webhook: no payment for QR ${qrId}`);
+        } else {
+          await this.markPaid(
+            payment,
+            paymentEntity?.id ?? `qr_${qrId}`,
+            `qr_code.credited ${qrId}`,
+          );
+        }
+      }
+    }
     return { received: true };
   }
 
-  /** Called by the main payments webhook as a fallback (single webhook URL setup). */
+  /**
+   * Called by the main payments webhook as a fallback (single webhook URL setup).
+   * Matches checkout orders and UPI QR ids (QR payments report order_id = qr id).
+   */
   async markPaidByRazorpayOrder(
     razorpayOrderId: string,
     razorpayPaymentId: string,
     context: string,
   ) {
-    const payment = await this.repo.findOne({ where: { razorpayOrderId } });
+    const payment = await this.repo.findOne({
+      where: [{ razorpayOrderId }, { razorpayQrId: razorpayOrderId }],
+    });
     if (!payment) return null;
     return this.markPaid(payment, razorpayPaymentId, context);
   }
@@ -241,7 +297,7 @@ export class ProxyPaymentsService {
     return payment;
   }
 
-  private toPublic(p: ProxyPayment): ProxyPaymentPublic {
+  private toPublic(p: ProxyPayment, upiString?: string): ProxyPaymentPublic {
     return {
       id: p.id,
       amount: p.amount,
@@ -250,6 +306,7 @@ export class ProxyPaymentsService {
       status: p.status,
       razorpayOrderId: p.razorpayOrderId,
       razorpayKeyId: this.config.get<string>('RAZORPAY_KEY_ID') ?? undefined,
+      upiString: upiString || undefined,
     };
   }
 
@@ -296,22 +353,97 @@ export class ProxyPaymentsService {
 
   /** Poll Razorpay for captured payments (fallback when webhook is delayed). */
   private async syncFromRazorpay(payment: ProxyPayment): Promise<void> {
-    if (!payment.razorpayOrderId) return;
-    try {
-      const ordersApi = this.razorpay.orders as unknown as {
-        fetchPayments: (
-          orderId: string,
-        ) => Promise<{ items?: Array<{ id?: string; status?: string }> }>;
-      };
-      const res = await ordersApi.fetchPayments(payment.razorpayOrderId);
-      const captured = res?.items?.find((p) => p.status === 'captured' && p.id);
-      if (captured?.id) {
-        await this.markPaid(payment, captured.id, `order fetch ${captured.id}`);
+    if (payment.razorpayOrderId) {
+      try {
+        const ordersApi = this.razorpay.orders as unknown as {
+          fetchPayments: (
+            orderId: string,
+          ) => Promise<{ items?: Array<{ id?: string; status?: string }> }>;
+        };
+        const res = await ordersApi.fetchPayments(payment.razorpayOrderId);
+        const captured = res?.items?.find((p) => p.status === 'captured' && p.id);
+        if (captured?.id) {
+          await this.markPaid(payment, captured.id, `order fetch ${captured.id}`);
+          return;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Proxy sync failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
+    }
+    // QR path: no checkout order — look for captured payments on the QR itself.
+    if (payment.status !== ProxyPaymentStatus.PAID && payment.razorpayQrId) {
+      try {
+        const res = (await this.razorpay.qrCode.fetchAllPayments(
+          payment.razorpayQrId,
+          { count: QR_FETCH_PAYMENTS_COUNT },
+        )) as RazorpayQrFetchPaymentsResponse;
+        const captured = res?.items?.find((p) => p.status === 'captured');
+        if (captured && typeof captured.id === 'string') {
+          await this.markPaid(
+            payment,
+            captured.id,
+            `QR ${payment.razorpayQrId} payment detected via fetch`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Proxy QR sync failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Create (once) the single-use Razorpay UPI QR and return its intent string
+   * (`upi://pay?...`) for scan / Pay-via-UPI flows. Best-effort: returns ''
+   * when Razorpay is unavailable so callers can fall back to Checkout.
+   */
+  private async ensureRazorpayQr(payment: ProxyPayment): Promise<string> {
+    try {
+      if (!payment.razorpayQrId) {
+        const closeBy = Math.floor(Date.now() / 1000) + QR_CLOSE_BY_SECONDS;
+        const qr = (await this.razorpay.qrCode.create({
+          type: 'upi_qr',
+          name: `Muzobox ${payment.amount}`.slice(0, RAZORPAY_DESCRIPTION_MAX_LENGTH),
+          usage: 'single_use',
+          fixed_amount: true,
+          payment_amount: payment.amount * 100,
+          description: (
+            payment.description ??
+            (payment.referenceId ? `Ref: ${payment.referenceId}` : 'Payment')
+          ).slice(0, RAZORPAY_DESCRIPTION_MAX_LENGTH),
+          close_by: closeBy,
+        } as Parameters<Razorpay['qrCode']['create']>[0])) as unknown as {
+          id?: string;
+        };
+        if (!qr?.id) return '';
+        payment.razorpayQrId = qr.id;
+        await this.repo.save(payment);
+        this.logger.log(`Proxy payment ${payment.id}: Razorpay QR ${qr.id}`);
+      }
+      return this.fetchQrContent(payment);
     } catch (err) {
       this.logger.warn(
-        `Proxy sync failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
+        `Proxy QR creation failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
       );
+      return '';
+    }
+  }
+
+  /** UPI intent string for an existing QR id ('' when unavailable). */
+  private async fetchQrContent(payment: ProxyPayment): Promise<string> {
+    if (!payment.razorpayQrId) return '';
+    try {
+      const fetched = await this.razorpay.qrCode.fetch(payment.razorpayQrId);
+      const withContent = fetched as RazorpayQrFetchResponse;
+      return withContent?.image_content ?? '';
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch QR content for ${payment.razorpayQrId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return '';
     }
   }
 

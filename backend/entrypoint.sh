@@ -13,6 +13,7 @@ run_migrations() {
     psql "$MIGRATION_URL" -f scripts/add-venue-discount.sql 2>/dev/null || true
     psql "$MIGRATION_URL" -f scripts/add-razorpay-qr.sql 2>/dev/null || true
     psql "$MIGRATION_URL" -f scripts/add-proxy-payments.sql 2>/dev/null || true
+    psql "$MIGRATION_URL" -f scripts/add-proxy-qr-id.sql 2>/dev/null || true
   else
     [ -z "$DB_PASSWORD" ] && return
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/init-db.sql 2>/dev/null || true
@@ -21,6 +22,7 @@ run_migrations() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-venue-discount.sql 2>/dev/null || true
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-razorpay-qr.sql 2>/dev/null || true
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-proxy-payments.sql 2>/dev/null || true
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USERNAME" -d "$DB_NAME" -f scripts/add-proxy-qr-id.sql 2>/dev/null || true
   fi
   echo "Migrations finished."
 }
