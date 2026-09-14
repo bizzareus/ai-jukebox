@@ -17,6 +17,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { VenuesService } from '../venues/venues.service';
 import { SongsService } from '../songs/songs.service';
 import { QueueService } from '../queue/queue.service';
+import { ProxyPaymentsService } from '../proxy-payments/proxy-payments.service';
 import type {
   RazorpayWebhookPayload,
   RazorpayPaymentEntity,
@@ -68,6 +69,7 @@ export class PaymentsService {
     private readonly songsService: SongsService,
     @Inject(forwardRef(() => QueueService))
     private readonly queueService: QueueService,
+    private readonly proxyPaymentsService: ProxyPaymentsService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
@@ -388,6 +390,22 @@ export class PaymentsService {
       this.logger.warn(
         `No payment found for QR/order ${qrIdOrOrderId} (check DB has razorpay_order_id set for Pay Online)`,
       );
+      // Fallback: this order may belong to a proxy payment link
+      // (lastberth.com flow) sharing the same Razorpay webhook URL.
+      try {
+        const proxied = await this.proxyPaymentsService.markPaidByRazorpayOrder(
+          qrIdOrOrderId,
+          razorpayPaymentId,
+          'main webhook fallback',
+        );
+        if (proxied) {
+          this.logger.log(`Proxy payment ${proxied.id} marked PAID via main webhook`);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Proxy fallback failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       return null;
     }
     this.logger.log(

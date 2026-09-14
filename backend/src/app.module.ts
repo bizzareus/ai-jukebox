@@ -9,6 +9,7 @@ import { VenuesModule } from './venues/venues.module';
 import { SongsModule } from './songs/songs.module';
 import { PlaylistsModule } from './playlists/playlists.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ProxyPaymentsModule } from './proxy-payments/proxy-payments.module';
 import { QueueModule } from './queue/queue.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -65,6 +66,7 @@ import { GtmModule } from './gtm/gtm.module';
     SongsModule,
     PlaylistsModule,
     PaymentsModule,
+    ProxyPaymentsModule,
     QueueModule,
     YoutubeModule,
     NotificationsModule,

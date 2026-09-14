@@ -6,6 +6,7 @@ import { PaymentsController } from './payments.controller';
 import { VenuesModule } from '../venues/venues.module';
 import { SongsModule } from '../songs/songs.module';
 import { QueueModule } from '../queue/queue.module';
+import { ProxyPaymentsModule } from '../proxy-payments/proxy-payments.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { QueueModule } from '../queue/queue.module';
     VenuesModule,
     SongsModule,
     forwardRef(() => QueueModule),
+    ProxyPaymentsModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService],

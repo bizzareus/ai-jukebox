@@ -22,6 +22,7 @@ import SuperAdminGtm from './pages/admin/SuperAdminGtm';
 import Settings from './pages/admin/Settings';
 import Landing from './pages/Landing';
 import Onboard from './pages/Onboard';
+import ProxyPay from './pages/ProxyPay';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          {/* Hosted payment link (muzobox as payment proxy for lastberth.com) */}
+          <Route path="/pay/:id" element={<ProxyPay />} />
+
           {/* Customer routes */}
           <Route path="/:slug" element={<VenueHome />} />
           <Route path="/:slug/playlist/:playlistId" element={<PlaylistView />} />
