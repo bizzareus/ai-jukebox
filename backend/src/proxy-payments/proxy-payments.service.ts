@@ -273,8 +273,22 @@ export class ProxyPaymentsService {
         return order.id;
       }
     } catch (err) {
+      // Razorpay SDK failures are plain objects ({ statusCode, error: { code,
+      // description } }), not Errors — String(err) renders "[object Object".
+      const detail = err as {
+        statusCode?: number;
+        response?: { data?: unknown };
+        error?: unknown;
+        message?: string;
+      };
       this.logger.warn(
-        `Razorpay order creation failed for proxy payment ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
+        `Razorpay order creation failed for proxy payment ${payment.id}: ` +
+          JSON.stringify(
+            detail?.response?.data ??
+              detail?.error ??
+              detail?.message ??
+              String(err),
+          ),
       );
     }
     return null;

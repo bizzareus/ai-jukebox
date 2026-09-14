@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, IndianRupee, Loader2, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle, IndianRupee, Loader2, XCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 interface ProxyPublic {
@@ -212,7 +212,7 @@ export default function ProxyPay() {
     <div className="min-h-screen bg-surface flex items-center justify-center px-5 py-10">
       <div className="max-w-sm w-full bg-surface-card border border-surface-border rounded-2xl p-6 shadow-sm">
         <div className="text-center mb-5">
-          <p className="text-stone-500 text-xs uppercase tracking-wide">Secure payment via Muzobox</p>
+          <p className="text-stone-500 text-xs uppercase tracking-wide">Secure payment</p>
           <div className="flex items-center justify-center gap-1 mt-2 text-stone-900">
             <IndianRupee className="w-6 h-6 text-brand-600" />
             <span className="font-display text-4xl font-bold">{info?.amount}</span>
@@ -257,14 +257,15 @@ export default function ProxyPay() {
               ) : (
                 <>
                   <IndianRupee className="w-5 h-5" />
-                  Pay ₹{info?.amount} now
+                  Pay ₹{info?.amount}
                 </>
               )}
             </button>
-            <div className="flex items-center justify-center gap-1.5 mt-4 text-stone-400">
-              <ShieldCheck className="w-4 h-4" />
-              <span className="text-xs">UPI · Cards · Netbanking via Razorpay</span>
-            </div>
+            {info?.description?.startsWith('Chart alert') && (
+              <p className="text-stone-500 text-xs text-center mt-3">
+                100% guaranteed refund if full confirmed ticket not found
+              </p>
+            )}
             {error && <p className="text-red-500 text-xs text-center mt-3">{error}</p>}
           </>
         )}
