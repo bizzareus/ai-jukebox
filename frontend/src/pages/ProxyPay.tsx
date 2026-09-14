@@ -13,6 +13,9 @@ interface ProxyPublic {
   razorpayOrderId: string | null;
   razorpayKeyId?: string;
   upiString?: string;
+  customerName: string | null;
+  customerMobile: string | null;
+  customerEmail: string | null;
 }
 
 interface ProxyStatus {
@@ -39,6 +42,15 @@ function loadRazorpayCheckout(): Promise<void> {
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** 10-digit Indian mobile → +91 format for Razorpay prefill. */
+function formatContactForRazorpay(mobile: string | null | undefined): string | undefined {
+  if (!mobile || typeof mobile !== 'string') return undefined;
+  const digits = mobile.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  return digits.length >= 10 ? `+91${digits.slice(-10)}` : undefined;
+}
 
 export default function ProxyPay() {
   const { id } = useParams<{ id: string }>();
@@ -190,6 +202,21 @@ export default function ProxyPay() {
         currency: 'INR',
         name: 'Muzobox',
         description: info.description ?? (info.referenceId ? `Ref: ${info.referenceId}` : 'Payment'),
+        // Prefill whichever contact details the source site collected.
+        ...(() => {
+          const contact = formatContactForRazorpay(info.customerMobile);
+          const email = info.customerEmail?.trim() || undefined;
+          const name = info.customerName?.trim() || undefined;
+          return contact || email || name
+            ? {
+                prefill: {
+                  ...(contact ? { contact } : {}),
+                  ...(email ? { email } : {}),
+                  ...(name ? { name } : {}),
+                },
+              }
+            : {};
+        })(),
         theme: { color: '#7c2d12' },
         modal: { ondismiss: () => setPaying(false) },
         handler: async (response: unknown) => {

@@ -48,6 +48,10 @@ export interface ProxyPaymentPublic {
   razorpayKeyId?: string;
   /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
   upiString?: string;
+  /** Contact details from the source site, for Razorpay Checkout prefill. */
+  customerName: string | null;
+  customerMobile: string | null;
+  customerEmail: string | null;
 }
 
 export interface ProxyPaymentStatusResult {
@@ -307,6 +311,9 @@ export class ProxyPaymentsService {
       razorpayOrderId: p.razorpayOrderId,
       razorpayKeyId: this.config.get<string>('RAZORPAY_KEY_ID') ?? undefined,
       upiString: upiString || undefined,
+      customerName: p.customerName,
+      customerMobile: p.customerMobile,
+      customerEmail: p.customerEmail,
     };
   }
 
