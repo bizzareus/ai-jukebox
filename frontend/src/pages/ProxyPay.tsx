@@ -22,15 +22,6 @@ interface ProxyStatus {
   redirectUrl: string;
 }
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => {
-      open: () => void;
-      on: (event: string, handler: (resp: unknown) => void) => void;
-    };
-  }
-}
-
 function loadRazorpayCheckout(): Promise<void> {
   if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
   if (window.Razorpay) return Promise.resolve();

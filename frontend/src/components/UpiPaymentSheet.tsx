@@ -17,19 +17,6 @@ function getPlatform(): 'android' | 'ios' | 'desktop' {
   return 'desktop';
 }
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: {
-      key: string;
-      order_id: string;
-      amount: number;
-      currency: string;
-      prefill?: { name?: string; email?: string; contact?: string };
-      handler: (response: { razorpay_payment_id: string }) => void;
-    }) => { open: () => void };
-  }
-}
-
 function loadRazorpayCheckout(): Promise<void> {
   if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
   if (window.Razorpay) return Promise.resolve();
