@@ -14,6 +14,13 @@ async function bootstrap() {
     .split(',')
     .map((o: string) => o.trim())
     .filter((o): o is string => o.length > 0);
+  // Muzobox's own web origins are always allowed, regardless of FRONTEND_URL
+  // (covers direct cross-origin API calls from the hosted pay page, including
+  // when it runs embedded in a partner-site iframe).
+  const ALWAYS_ALLOWED_ORIGINS = [
+    'https://muzobox.com',
+    'https://www.muzobox.com',
+  ];
   const isNgrokOrigin = (origin: string): boolean =>
     /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i.test(origin);
@@ -24,7 +31,11 @@ async function bootstrap() {
         cb(null, true);
         return;
       }
-      if (allowedOrigins.includes(origin) || isNgrokOrigin(origin)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        ALWAYS_ALLOWED_ORIGINS.includes(origin) ||
+        isNgrokOrigin(origin)
+      ) {
         cb(null, true);
         return;
       }

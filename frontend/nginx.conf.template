@@ -19,6 +19,8 @@ server {
     location / {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
+        # Allow LastBerth checkout iframes to embed the pay page
+        add_header Content-Security-Policy "frame-ancestors 'self' https://lastberth.com https://*.lastberth.com";
         try_files $uri $uri/ /index.html;
     }
 
