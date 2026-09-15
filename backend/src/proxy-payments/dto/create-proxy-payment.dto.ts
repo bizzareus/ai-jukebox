@@ -85,3 +85,26 @@ export class VerifyProxyPaymentDto {
   @MinLength(1)
   razorpay_signature: string;
 }
+
+export class RefundProxyPaymentDto {
+  /** Amount in INR (rupees). Defaults to full payment amount. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? Number(value) : value,
+  )
+  @IsInt({ message: 'amount must be an integer (rupees)' })
+  @Min(1, { message: 'amount must be at least ₹1' })
+  @IsOptional()
+  amount?: number;
+
+  /** Reason recorded in logs + Razorpay notes (e.g. chart_no_full_journey). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  reason?: string;
+
+  /** lastberth's own reference, echoed in logs. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  referenceId?: string;
+}

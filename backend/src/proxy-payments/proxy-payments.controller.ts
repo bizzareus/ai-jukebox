@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { ProxyPaymentsService } from './proxy-payments.service';
 import {
   CreateProxyPaymentDto,
+  RefundProxyPaymentDto,
   VerifyProxyPaymentDto,
 } from './dto/create-proxy-payment.dto';
 
@@ -109,5 +110,24 @@ export class ProxyPaymentsController {
       dto.razorpay_order_id,
       dto.razorpay_signature,
     );
+  }
+
+  /**
+   * lastberth backend → muzobox refund. Requires x-api-key.
+   * Body: { amount?, reason?, referenceId? } — defaults to full refund.
+   */
+  @Post(':id/refund')
+  refund(
+    @Param('id') id: string,
+    @Body() dto: RefundProxyPaymentDto,
+    @Headers('x-api-key') apiKey: string | undefined,
+  ) {
+    this.assertApiKey(apiKey);
+    if (!id?.trim()) throw new BadRequestException('id is required');
+    return this.proxy.refundPayment(id.trim(), {
+      amount: dto?.amount,
+      reason: dto?.reason,
+      referenceId: dto?.referenceId,
+    });
   }
 }

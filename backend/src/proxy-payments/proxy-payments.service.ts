@@ -64,6 +64,15 @@ export interface ProxyPaymentStatusResult {
   redirectUrl: string;
 }
 
+export interface ProxyPaymentRefundResult {
+  status: 'refunded' | 'already_refunded';
+  amount: number;
+  referenceId: string | null;
+  razorpayPaymentId: string | null;
+  razorpayRefundId: string;
+  refundedAt: Date;
+}
+
 const CALLBACK_TIMEOUT_MS = 10_000;
 
 @Injectable()
@@ -176,6 +185,87 @@ export class ProxyPaymentsService {
   async getRedirectUrl(id: string): Promise<{ redirectUrl: string; status: ProxyPaymentStatus }> {
     const payment = await this.findOrThrow(id);
     return { redirectUrl: this.buildRedirectUrl(payment), status: payment.status };
+  }
+
+  // ─── Refund (lastberth automated refunds) ──────────────────────────
+
+  /**
+   * Refund a PAID proxy payment via Razorpay. Idempotent: a payment that
+   * already has `razorpayRefundId` returns `already_refunded` without
+   * calling Razorpay again.
+   */
+  async refundPayment(
+    id: string,
+    opts?: { amount?: number; reason?: string; referenceId?: string },
+  ): Promise<ProxyPaymentRefundResult> {
+    const payment = await this.findOrThrow(id);
+    if (payment.status !== ProxyPaymentStatus.PAID) {
+      throw new BadRequestException('Only PAID payments can be refunded');
+    }
+    if (!payment.razorpayPaymentId) {
+      throw new BadRequestException('No Razorpay payment id recorded');
+    }
+    if (payment.razorpayRefundId) {
+      return {
+        status: 'already_refunded',
+        amount: payment.refundAmount ?? payment.amount,
+        referenceId: payment.referenceId,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        razorpayRefundId: payment.razorpayRefundId,
+        refundedAt: payment.refundedAt ?? payment.updatedAt,
+      };
+    }
+
+    const amount = opts?.amount ?? payment.amount;
+    if (!Number.isInteger(amount) || amount < 1 || amount > payment.amount) {
+      throw new BadRequestException('Refund amount must cover 1..paid amount');
+    }
+    const reason = opts?.reason?.trim().slice(0, 500) || 'chart_no_full_journey';
+
+    try {
+      const refund = (await this.razorpay.payments.refund(
+        payment.razorpayPaymentId,
+        {
+          amount: amount * 100,
+          notes: {
+            proxy_payment_id: payment.id,
+            reference_id:
+              opts?.referenceId?.trim() || payment.referenceId || '',
+            reason,
+          },
+        },
+      )) as unknown as { id?: string };
+      if (!refund?.id) throw new Error('Empty refund response from Razorpay');
+
+      payment.refundStatus = 'succeeded';
+      payment.razorpayRefundId = refund.id;
+      payment.refundAmount = amount;
+      payment.refundReason = reason;
+      payment.refundedAt = new Date();
+      payment.refundError = null;
+      await this.repo.save(payment);
+      this.logger.log(
+        `Proxy payment ${payment.id} refunded ${refund.id} ₹${amount} (${reason})`,
+      );
+      return {
+        status: 'refunded',
+        amount,
+        referenceId: payment.referenceId,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        razorpayRefundId: refund.id,
+        refundedAt: payment.refundedAt,
+      };
+    } catch (err) {
+      const detail =
+        (err as { error?: unknown; message?: string })?.error ??
+        (err as Error)?.message ??
+        String(err);
+      payment.refundStatus = 'failed';
+      payment.refundError = JSON.stringify(detail).slice(0, 1000);
+      await this.repo.save(payment);
+      this.logger.warn(`Proxy refund failed for ${payment.id}: ${payment.refundError}`);
+      throw new BadRequestException('Refund failed, please retry');
+    }
   }
 
   // ─── Checkout verify (instant, no webhook wait) ──────────────────────

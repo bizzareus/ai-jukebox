@@ -108,6 +108,34 @@ export class ProxyPayment {
   @Column({ name: 'callback_attempted_at', type: 'timestamptz', nullable: true })
   callbackAttemptedAt: Date | null;
 
+  /**
+   * Refund tracking for lastberth automated refunds (no full-journey ticket).
+   * `refundStatus`: none | initiated | succeeded | failed.
+   */
+  @Column({ name: 'refund_status', type: 'varchar', length: 32, nullable: true })
+  refundStatus: string | null;
+
+  @Column({
+    name: 'razorpay_refund_id',
+    type: 'varchar',
+    length: 255,
+    unique: true,
+    nullable: true,
+  })
+  razorpayRefundId: string | null;
+
+  @Column({ name: 'refund_amount', type: 'int', nullable: true })
+  refundAmount: number | null;
+
+  @Column({ name: 'refund_reason', type: 'varchar', length: 500, nullable: true })
+  refundReason: string | null;
+
+  @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
+  refundedAt: Date | null;
+
+  @Column({ name: 'refund_error', type: 'text', nullable: true })
+  refundError: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
