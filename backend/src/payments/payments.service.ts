@@ -245,7 +245,9 @@ export class PaymentsService {
    * not hand-craft these URLs with a static VPA. Returns `{}` when there is
    * no valid Razorpay UPI string (e.g. feature not enabled on the account).
    */
-  private buildAppIntentsFromUpiString(upiString: string): Pick<
+  private buildAppIntentsFromUpiString(
+    upiString: string,
+  ): Pick<
     CreateOrderResult,
     'upiIntent' | 'gpayIntent' | 'phonepeIntent' | 'paytmIntent'
   > {
@@ -424,7 +426,9 @@ export class PaymentsService {
           'main webhook fallback',
         );
         if (proxied) {
-          this.logger.log(`Proxy payment ${proxied.id} marked PAID via main webhook`);
+          this.logger.log(
+            `Proxy payment ${proxied.id} marked PAID via main webhook`,
+          );
         }
       } catch (err) {
         this.logger.warn(

@@ -99,10 +99,7 @@ export class ProxyPaymentsController {
 
   /** Public: verify Razorpay Checkout signature → mark PAID instantly. */
   @Post(':id/verify')
-  verify(
-    @Param('id') id: string,
-    @Body() dto: VerifyProxyPaymentDto,
-  ) {
+  verify(@Param('id') id: string, @Body() dto: VerifyProxyPaymentDto) {
     if (!id?.trim()) throw new BadRequestException('id is required');
     return this.proxy.verifyCheckoutSignature(
       id.trim(),

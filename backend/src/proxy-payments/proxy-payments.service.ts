@@ -93,7 +93,9 @@ export class ProxyPaymentsService {
 
   // ─── Create ──────────────────────────────────────────────────────────
 
-  async createLink(dto: CreateProxyPaymentDto): Promise<ProxyPaymentCreateResult> {
+  async createLink(
+    dto: CreateProxyPaymentDto,
+  ): Promise<ProxyPaymentCreateResult> {
     const redirectUri = this.sanitizeRedirectUri(dto.redirectUri);
     const callbackUrl = dto.callbackUrl?.trim() || null;
     if (callbackUrl) this.assertCallbackUrlAllowed(callbackUrl);
@@ -150,7 +152,9 @@ export class ProxyPaymentsService {
     return { upiString };
   }
 
-  async ensureOrder(id: string): Promise<{ razorpayOrderId: string; razorpayKeyId: string }> {
+  async ensureOrder(
+    id: string,
+  ): Promise<{ razorpayOrderId: string; razorpayKeyId: string }> {
     const payment = await this.findOrThrow(id);
     const orderId = await this.ensureRazorpayOrder(payment);
     if (!orderId) {
@@ -182,9 +186,14 @@ export class ProxyPaymentsService {
     };
   }
 
-  async getRedirectUrl(id: string): Promise<{ redirectUrl: string; status: ProxyPaymentStatus }> {
+  async getRedirectUrl(
+    id: string,
+  ): Promise<{ redirectUrl: string; status: ProxyPaymentStatus }> {
     const payment = await this.findOrThrow(id);
-    return { redirectUrl: this.buildRedirectUrl(payment), status: payment.status };
+    return {
+      redirectUrl: this.buildRedirectUrl(payment),
+      status: payment.status,
+    };
   }
 
   // ─── Refund (lastberth automated refunds) ──────────────────────────
@@ -220,7 +229,8 @@ export class ProxyPaymentsService {
     if (!Number.isInteger(amount) || amount < 1 || amount > payment.amount) {
       throw new BadRequestException('Refund amount must cover 1..paid amount');
     }
-    const reason = opts?.reason?.trim().slice(0, 500) || 'chart_no_full_journey';
+    const reason =
+      opts?.reason?.trim().slice(0, 500) || 'chart_no_full_journey';
 
     try {
       const refund = (await this.razorpay.payments.refund(
@@ -263,7 +273,9 @@ export class ProxyPaymentsService {
       payment.refundStatus = 'failed';
       payment.refundError = JSON.stringify(detail).slice(0, 1000);
       await this.repo.save(payment);
-      this.logger.warn(`Proxy refund failed for ${payment.id}: ${payment.refundError}`);
+      this.logger.warn(
+        `Proxy refund failed for ${payment.id}: ${payment.refundError}`,
+      );
       throw new BadRequestException('Refund failed, please retry');
     }
   }
@@ -277,8 +289,13 @@ export class ProxyPaymentsService {
     razorpaySignature: string,
   ): Promise<ProxyPaymentStatusResult> {
     const payment = await this.findOrThrow(id);
-    if (!payment.razorpayOrderId || payment.razorpayOrderId !== razorpayOrderId) {
-      throw new BadRequestException('Order id does not match this payment link');
+    if (
+      !payment.razorpayOrderId ||
+      payment.razorpayOrderId !== razorpayOrderId
+    ) {
+      throw new BadRequestException(
+        'Order id does not match this payment link',
+      );
     }
     const secret = this.config.get<string>('RAZORPAY_KEY_SECRET');
     if (!secret) throw new BadRequestException('Payments not configured');
@@ -291,13 +308,20 @@ export class ProxyPaymentsService {
       this.logger.warn(`Proxy payment ${id}: checkout signature mismatch`);
       throw new BadRequestException('Invalid payment signature');
     }
-    await this.markPaid(payment, razorpayPaymentId, `checkout verify ${razorpayPaymentId}`);
+    await this.markPaid(
+      payment,
+      razorpayPaymentId,
+      `checkout verify ${razorpayPaymentId}`,
+    );
     return this.getStatus(id);
   }
 
   // ─── Webhook ─────────────────────────────────────────────────────────
 
-  async handleWebhook(rawBody: Buffer | undefined, signature: string | undefined) {
+  async handleWebhook(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+  ) {
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
       throw new BadRequestException('Webhook body required');
     }
@@ -313,12 +337,18 @@ export class ProxyPaymentsService {
     } catch {
       throw new BadRequestException('Invalid webhook JSON');
     }
-    const bodyForValidation = (payload?.event as string | undefined)?.startsWith('qr_code.')
+    const bodyForValidation = (
+      payload?.event as string | undefined
+    )?.startsWith('qr_code.')
       ? JSON.stringify(payload).replace(/\//g, '\\/')
       : rawBody.toString();
     let valid = false;
     try {
-      valid = validateWebhookSignature(bodyForValidation, signature.trim(), secret);
+      valid = validateWebhookSignature(
+        bodyForValidation,
+        signature.trim(),
+        secret,
+      );
     } catch {
       valid = false;
     }
@@ -330,12 +360,17 @@ export class ProxyPaymentsService {
     const event = payload?.event as string | undefined;
     this.logger.log(`Proxy webhook: ${event}`);
     if (event === 'payment.captured' || event === 'order.paid') {
-      const entity = payload?.payload?.payment?.entity ?? payload?.payment?.entity;
+      const entity =
+        payload?.payload?.payment?.entity ?? payload?.payment?.entity;
       const orderId: string | undefined =
         entity?.order_id ?? payload?.payload?.order?.entity?.id;
       const paymentId: string | undefined = entity?.id;
       if (orderId && paymentId) {
-        await this.markPaidByRazorpayOrder(orderId, paymentId, `webhook ${event}`);
+        await this.markPaidByRazorpayOrder(
+          orderId,
+          paymentId,
+          `webhook ${event}`,
+        );
       } else {
         this.logger.warn('Proxy webhook: missing order_id/payment id');
       }
@@ -407,7 +442,9 @@ export class ProxyPaymentsService {
     };
   }
 
-  private async ensureRazorpayOrder(payment: ProxyPayment): Promise<string | null> {
+  private async ensureRazorpayOrder(
+    payment: ProxyPayment,
+  ): Promise<string | null> {
     if (payment.razorpayOrderId) return payment.razorpayOrderId;
     try {
       const order = (await this.razorpay.orders.create({
@@ -423,7 +460,9 @@ export class ProxyPaymentsService {
       if (order?.id) {
         payment.razorpayOrderId = order.id;
         await this.repo.save(payment);
-        this.logger.log(`Proxy payment ${payment.id}: Razorpay order ${order.id}`);
+        this.logger.log(
+          `Proxy payment ${payment.id}: Razorpay order ${order.id}`,
+        );
         return order.id;
       }
     } catch (err) {
@@ -458,9 +497,15 @@ export class ProxyPaymentsService {
           ) => Promise<{ items?: Array<{ id?: string; status?: string }> }>;
         };
         const res = await ordersApi.fetchPayments(payment.razorpayOrderId);
-        const captured = res?.items?.find((p) => p.status === 'captured' && p.id);
+        const captured = res?.items?.find(
+          (p) => p.status === 'captured' && p.id,
+        );
         if (captured?.id) {
-          await this.markPaid(payment, captured.id, `order fetch ${captured.id}`);
+          await this.markPaid(
+            payment,
+            captured.id,
+            `order fetch ${captured.id}`,
+          );
           return;
         }
       } catch (err) {
@@ -503,7 +548,10 @@ export class ProxyPaymentsService {
         const closeBy = Math.floor(Date.now() / 1000) + QR_CLOSE_BY_SECONDS;
         const qr = (await this.razorpay.qrCode.create({
           type: 'upi_qr',
-          name: `Muzobox ${payment.amount}`.slice(0, RAZORPAY_DESCRIPTION_MAX_LENGTH),
+          name: `Muzobox ${payment.amount}`.slice(
+            0,
+            RAZORPAY_DESCRIPTION_MAX_LENGTH,
+          ),
           usage: 'single_use',
           fixed_amount: true,
           payment_amount: payment.amount * 100,
@@ -568,13 +616,20 @@ export class ProxyPaymentsService {
   // ─── URLs ────────────────────────────────────────────────────────────
 
   buildPayUrl(id: string): string {
-    const frontend = (this.config.get<string>('FRONTEND_URL') ?? '').split(',')[0]?.trim().replace(/\/$/, '');
+    const frontend = (this.config.get<string>('FRONTEND_URL') ?? '')
+      .split(',')[0]
+      ?.trim()
+      .replace(/\/$/, '');
     if (!frontend) return `/pay/${id}`;
     return `${frontend}/pay/${id}`;
   }
 
   lastberthBaseUrl(): string {
-    const base = (this.config.get<string>('LASTBERTH_BASE_URL') ?? 'https://lastberth.com').trim().replace(/\/$/, '');
+    const base = (
+      this.config.get<string>('LASTBERTH_BASE_URL') ?? 'https://lastberth.com'
+    )
+      .trim()
+      .replace(/\/$/, '');
     return base || 'https://lastberth.com';
   }
 
@@ -592,7 +647,8 @@ export class ProxyPaymentsService {
       amount: String(p.amount),
     });
     if (p.referenceId) params.set('referenceId', p.referenceId);
-    if (p.razorpayPaymentId) params.set('razorpay_payment_id', p.razorpayPaymentId);
+    if (p.razorpayPaymentId)
+      params.set('razorpay_payment_id', p.razorpayPaymentId);
     if (p.razorpayOrderId) params.set('razorpay_order_id', p.razorpayOrderId);
     return `${base}/${path}${sep}${params.toString()}`;
   }
@@ -605,13 +661,18 @@ export class ProxyPaymentsService {
   private sanitizeRedirectUri(input: string): string {
     const raw = input.trim();
     if (!raw) throw new BadRequestException('redirectUri must not be empty');
-    if (raw.startsWith('//')) throw new BadRequestException('redirectUri must be a relative path on lastberth.com');
+    if (raw.startsWith('//'))
+      throw new BadRequestException(
+        'redirectUri must be a relative path on lastberth.com',
+      );
     if (/^https?:\/\//i.test(raw)) {
       let parsed: URL;
       try {
         parsed = new URL(raw);
       } catch {
-        throw new BadRequestException('redirectUri must be a valid path or lastberth.com URL');
+        throw new BadRequestException(
+          'redirectUri must be a valid path or lastberth.com URL',
+        );
       }
       const baseHost = this.hostOf(this.lastberthBaseUrl());
       const host = parsed.hostname.toLowerCase();
@@ -620,13 +681,19 @@ export class ProxyPaymentsService {
         host === 'lastberth.com' ||
         host.endsWith('.lastberth.com');
       if (!allowed) {
-        throw new BadRequestException('redirectUri must point to lastberth.com');
+        throw new BadRequestException(
+          'redirectUri must point to lastberth.com',
+        );
       }
-      const rel = `${parsed.pathname}${parsed.search}${parsed.hash}`.replace(/^\/+/, '');
+      const rel = `${parsed.pathname}${parsed.search}${parsed.hash}`.replace(
+        /^\/+/,
+        '',
+      );
       if (!rel) throw new BadRequestException('redirectUri must not be empty');
       return rel.slice(0, 2000);
     }
-    if (/[\s<>"]/.test(raw)) throw new BadRequestException('redirectUri contains invalid characters');
+    if (/[\s<>"]/.test(raw))
+      throw new BadRequestException('redirectUri contains invalid characters');
     return raw.replace(/^\/+/, '').slice(0, 2000);
   }
 
@@ -663,9 +730,13 @@ export class ProxyPaymentsService {
       redirectUrl: this.buildRedirectUrl(payment),
     };
     try {
-      await axios.post(payment.callbackUrl, payload, { timeout: CALLBACK_TIMEOUT_MS });
+      await axios.post(payment.callbackUrl, payload, {
+        timeout: CALLBACK_TIMEOUT_MS,
+      });
       payment.callbackStatus = 'sent';
-      this.logger.log(`Proxy payment ${payment.id}: callback sent to ${payment.callbackUrl}`);
+      this.logger.log(
+        `Proxy payment ${payment.id}: callback sent to ${payment.callbackUrl}`,
+      );
     } catch (err) {
       payment.callbackStatus = 'failed';
       this.logger.warn(

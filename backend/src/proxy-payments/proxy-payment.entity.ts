@@ -40,17 +40,37 @@ export class ProxyPayment {
    * Optional server-to-server callback. After payment is marked PAID,
    * muzobox POSTs the payment payload here (fire-and-forget).
    */
-  @Column({ name: 'callback_url', type: 'varchar', length: 2000, nullable: true })
+  @Column({
+    name: 'callback_url',
+    type: 'varchar',
+    length: 2000,
+    nullable: true,
+  })
   callbackUrl: string | null;
 
   /** lastberth's own reference (booking id, order id, ...). Echoed back. */
-  @Column({ name: 'reference_id', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'reference_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   referenceId: string | null;
 
-  @Column({ name: 'customer_name', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'customer_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   customerName: string | null;
 
-  @Column({ name: 'customer_mobile', type: 'varchar', length: 32, nullable: true })
+  @Column({
+    name: 'customer_mobile',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
   customerMobile: string | null;
 
   @Column({
@@ -102,17 +122,31 @@ export class ProxyPayment {
   })
   razorpayQrId: string | null;
 
-  @Column({ name: 'callback_status', type: 'varchar', length: 32, nullable: true })
+  @Column({
+    name: 'callback_status',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
   callbackStatus: string | null;
 
-  @Column({ name: 'callback_attempted_at', type: 'timestamptz', nullable: true })
+  @Column({
+    name: 'callback_attempted_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   callbackAttemptedAt: Date | null;
 
   /**
    * Refund tracking for lastberth automated refunds (no full-journey ticket).
    * `refundStatus`: none | initiated | succeeded | failed.
    */
-  @Column({ name: 'refund_status', type: 'varchar', length: 32, nullable: true })
+  @Column({
+    name: 'refund_status',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
   refundStatus: string | null;
 
   @Column({
@@ -127,7 +161,12 @@ export class ProxyPayment {
   @Column({ name: 'refund_amount', type: 'int', nullable: true })
   refundAmount: number | null;
 
-  @Column({ name: 'refund_reason', type: 'varchar', length: 500, nullable: true })
+  @Column({
+    name: 'refund_reason',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
   refundReason: string | null;
 
   @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })

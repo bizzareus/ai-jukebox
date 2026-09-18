@@ -1,0 +1,26 @@
+---
+description: NestJS request validation — DTOs + global ValidationPipe (official pattern)
+globs: backend/**/*.ts
+alwaysApply: true
+---
+
+# NestJS validation (backend)
+
+Follow [NestJS validation](https://docs.nestjs.com/techniques/validation): **`class-validator`** + **`class-transformer`** on DTO classes, wired through the **global `ValidationPipe`**.
+
+## Do
+
+- Define **DTO classes** with decorators (`@IsString()`, `@IsOptional()`, `@IsBoolean()`, `@IsInt()`, `@Min()`, etc.).
+- Use **`@Body() dto: SomeDto`** (and `@Query()` / `@Param()` with DTOs where appropriate) so the global pipe validates and transforms input.
+- Keep global pipe aligned with the docs, e.g. `whitelist: true`, `forbidNonWhitelisted: true`, `transform: true` in `main.ts` (adjust only with good reason).
+- For numeric fields that arrive as strings from some clients, use **`@Type(() => Number)`** (from `class-transformer`) together with `@IsInt()` / `@IsNumber()` as needed.
+- For booleans that may arrive as strings, use **`@Transform`** to coerce before `@IsBoolean()` when necessary.
+
+## Don’t
+
+- Don’t bypass validation by reading **`req.body`** manually and hand-parsing patch payloads **unless** there is a documented exception (e.g. raw webhook signature bodies).
+- Don’t duplicate large manual validation logic that belongs on the DTO; extend the DTO and decorators instead.
+
+## Auth-specific shaping
+
+- If some fields are **super-admin only** (e.g. `pricingEnabled`), still validate with the full DTO, then **strip or ignore** forbidden fields in the controller after validation (e.g. copy DTO and `delete` disallowed properties for non–super-admins) before calling the service.
