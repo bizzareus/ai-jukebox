@@ -22,6 +22,13 @@ function upiToIntentUrl(upiLink: string, packageName: string): string {
 
 interface UpiAppButtonsProps {
   upiLink: string;
+  /** Per-app intents generated server-side via the Razorpay SDK. Preferred over client-side derivation. */
+  intents?: {
+    upiIntent?: string;
+    gpayIntent?: string;
+    phonepeIntent?: string;
+    paytmIntent?: string;
+  };
   className?: string;
 }
 
@@ -31,6 +38,8 @@ const UPI_APPS: {
   shortLabel: string;
   bgClass: string;
   scheme: string;
+  /** Key into the server-provided intents for this app. */
+  intentKey: 'gpayIntent' | 'phonepeIntent' | 'paytmIntent';
   /** Android intent package (for intent:// URL). */
   androidPackage: string;
   logoSrc?: string;
@@ -43,6 +52,7 @@ const UPI_APPS: {
     shortLabel: "UPI",
     bgClass: "bg-[#5F259F]",
     scheme: "phonepe",
+    intentKey: "phonepeIntent",
     androidPackage: "com.phonepe.app",
     logoSrc: phonepeLogo,
   },
@@ -51,7 +61,8 @@ const UPI_APPS: {
     name: "PayTM",
     shortLabel: "UPI",
     bgClass: "bg-[#00B9F1]",
-    scheme: "paytm",
+    scheme: "paytmmp",
+    intentKey: "paytmIntent",
     androidPackage: "net.one97.paytm",
     logoSrc: paytmLogo,
   },
@@ -60,14 +71,15 @@ const UPI_APPS: {
     name: "Google Pay",
     shortLabel: "UPI",
     bgClass: "bg-[#1A73E8]",
-    scheme: "gpay",
+    scheme: "tez",
+    intentKey: "gpayIntent",
     androidPackage: "com.google.android.apps.nbu.paisa.user",
     logoSrc: gpayLogo,
     hideOnIos: true,
   },
 ];
 
-export function UpiAppButtons({ upiLink, className = "" }: UpiAppButtonsProps) {
+export function UpiAppButtons({ upiLink, intents, className = "" }: UpiAppButtonsProps) {
   const platform = getPlatform();
 
   const handleClick = (
@@ -79,13 +91,16 @@ export function UpiAppButtons({ upiLink, className = "" }: UpiAppButtonsProps) {
   };
 
   const getUrlForApp = (app: (typeof UPI_APPS)[number]): string => {
-    if (platform === "android" && upiLink.startsWith("upi://")) {
-      return upiToIntentUrl(upiLink, app.androidPackage);
+    // Prefer the server-generated Razorpay intent; fall back to deriving
+    // from the generic UPI link for older API responses.
+    const baseLink = intents?.[app.intentKey] ?? upiLink;
+    if (platform === "android" && baseLink.startsWith("upi://")) {
+      return upiToIntentUrl(baseLink, app.androidPackage);
     }
-    if (upiLink.startsWith("upi://")) {
-      return upiLink.replace("upi://", `${app.scheme}://`);
+    if (baseLink.startsWith("upi://")) {
+      return baseLink.replace("upi://", `${app.scheme}://`);
     }
-    return upiLink;
+    return baseLink;
   };
 
   const appsToShow =

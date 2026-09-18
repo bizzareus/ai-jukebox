@@ -121,6 +121,7 @@ export class PaymentsService {
       amountPaise,
     );
     const upiString = await this.fetchQrImageContent(qr.id);
+    const appIntents = this.buildAppIntentsFromUpiString(upiString);
     const razorpayKeyId =
       this.configService.get<string>('RAZORPAY_KEY_ID') ?? undefined;
 
@@ -138,6 +139,7 @@ export class PaymentsService {
       paymentId: payment.id,
       amount,
       upiString,
+      ...appIntents,
       qrImageUrl: upiString ? undefined : qr.image_url,
       razorpayOrderId: razorpayOrderId ?? undefined,
       razorpayKeyId,
@@ -232,6 +234,29 @@ export class PaymentsService {
       );
       return '';
     }
+  }
+
+  /**
+   * Build per-app UPI intent URLs from the canonical UPI string returned by
+   * the Razorpay SDK (QR `image_content`, e.g. `upi://pay?pa=...&am=...`).
+   *
+   * Only the query payload after `upi://` is reused, so the VPA, amount,
+   * note and currency always match what Razorpay generated — callers must
+   * not hand-craft these URLs with a static VPA. Returns `{}` when there is
+   * no valid Razorpay UPI string (e.g. feature not enabled on the account).
+   */
+  private buildAppIntentsFromUpiString(upiString: string): Pick<
+    CreateOrderResult,
+    'upiIntent' | 'gpayIntent' | 'phonepeIntent' | 'paytmIntent'
+  > {
+    if (!upiString || !upiString.startsWith('upi://pay')) return {};
+    const payload = upiString.replace(/^upi:\/\//, '');
+    return {
+      upiIntent: upiString,
+      gpayIntent: `tez://${payload}`,
+      phonepeIntent: `phonepe://${payload}`,
+      paytmIntent: `paytmmp://${payload}`,
+    };
   }
 
   async handleWebhook(

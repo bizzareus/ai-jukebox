@@ -97,10 +97,7 @@ export class GtmWhatsappService {
           `Bulk send: rate limited, waiting ${rateLimitWaitMs}ms before retry for ${phone}`,
         );
         await GtmWhatsappService.delayMs(rateLimitWaitMs);
-        result = await this.wasenderApi.sendTextMessage(
-          phone,
-          messageWithLink,
-        );
+        result = await this.wasenderApi.sendTextMessage(phone, messageWithLink);
       }
       if (result?.success) {
         await this.messageRepo.save(

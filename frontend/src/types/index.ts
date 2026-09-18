@@ -89,6 +89,14 @@ export interface CreateOrderResponse {
   amount: number;
   /** UPI deep link when using order-based flow; empty when using Razorpay QR (use qrImageUrl) */
   upiString: string;
+  /** Canonical UPI intent generated server-side from the Razorpay SDK QR content */
+  upiIntent?: string;
+  /** GPay intent (`tez://...`) generated server-side from the Razorpay SDK QR content */
+  gpayIntent?: string;
+  /** PhonePe intent (`phonepe://...`) generated server-side from the Razorpay SDK QR content */
+  phonepeIntent?: string;
+  /** Paytm intent (`paytmmp://...`) generated server-side from the Razorpay SDK QR content */
+  paytmIntent?: string;
   /** Razorpay QR image URL; when set, show this instead of generating QR from upiString */
   qrImageUrl?: string;
   /** True when using Razorpay test keys (rzp_test_*); show test UPI instructions */

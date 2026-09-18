@@ -403,7 +403,16 @@ export function UpiPaymentSheet({
                     Pay via UPI app
                   </p>
                 ) : null}
-                <UpiAppButtons upiLink={order.upiString} className="mt-1" />
+                <UpiAppButtons
+                  upiLink={order.upiIntent ?? order.upiString}
+                  intents={{
+                    upiIntent: order.upiIntent,
+                    gpayIntent: order.gpayIntent,
+                    phonepeIntent: order.phonepeIntent,
+                    paytmIntent: order.paytmIntent,
+                  }}
+                  className="mt-1"
+                />
               </>
             ) : null}
             {order.razorpayOrderId && order.razorpayKeyId ? (
