@@ -13,6 +13,7 @@ interface ProxyPublic {
   razorpayOrderId: string | null;
   razorpayKeyId?: string;
   upiString?: string;
+  qrImageUrl?: string;
   customerName: string | null;
   customerMobile: string | null;
   customerEmail: string | null;
@@ -66,6 +67,30 @@ export default function ProxyPay() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isIframe =
+    typeof window !== 'undefined' &&
+    (window.self !== window.top ||
+      new URLSearchParams(window.location.search).get('iframe') === '1');
+
+  const notifyParentPaid = useCallback(
+    (st?: ProxyStatus | null) => {
+      if (typeof window === 'undefined') return;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          {
+            type: 'payment_complete',
+            status: 'paid',
+            paymentId: id,
+            referenceId: info?.referenceId,
+            razorpayPaymentId: st?.razorpayPaymentId ?? null,
+          },
+          '*',
+        );
+      }
+    },
+    [id, info?.referenceId],
+  );
+
   const stopPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -96,15 +121,21 @@ export default function ProxyPay() {
           );
           if (cancelled) return;
           setStatus(st);
+          notifyParentPaid(st);
         } else if (res.upiString) {
           setUpiString(res.upiString);
         } else {
           try {
-            const qr = await api.post<{ upiString: string }>(
+            const qr = await api.post<{ upiString: string; qrImageUrl?: string }>(
               `/proxy-payments/${encodeURIComponent(id)}/ensure-qr`,
               {},
             );
-            if (!cancelled && qr?.upiString) setUpiString(qr.upiString);
+            if (!cancelled) {
+              if (qr?.upiString) setUpiString(qr.upiString);
+              if (qr?.qrImageUrl && !res.qrImageUrl) {
+                setInfo((prev) => (prev ? { ...prev, qrImageUrl: qr.qrImageUrl } : prev));
+              }
+            }
           } catch {
             // QR unavailable — checkout fallback below stays available.
           }
@@ -118,19 +149,20 @@ export default function ProxyPay() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, notifyParentPaid]);
 
   // Auto-open the UPI intent once (mobile app switch). Desktop/no-handler
-  // falls through to the QR + retry CTA below.
+  // falls through to the QR + retry CTA below. (Skipped when embedded in iframe).
   useEffect(() => {
+    if (isIframe) return;
     if (!upiString || intentOpenedRef.current) return;
     intentOpenedRef.current = true;
     window.location.assign(upiString);
-  }, [upiString]);
+  }, [upiString, isIframe]);
 
-  // Draw the UPI QR for scan-and-pay fallback.
+  // Draw the UPI QR for scan-and-pay fallback when official image is absent.
   useEffect(() => {
-    if (!upiString) return;
+    if (!upiString || info?.qrImageUrl) return;
     const raf = requestAnimationFrame(() => {
       if (qrCanvasRef.current) {
         QRCode.toCanvas(qrCanvasRef.current, upiString, {
@@ -141,7 +173,7 @@ export default function ProxyPay() {
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [upiString]);
+  }, [upiString, info?.qrImageUrl]);
 
   // Poll status after checkout is opened (webhook / UPI intent fallback)
   const startPolling = useCallback(() => {
@@ -154,9 +186,12 @@ export default function ProxyPay() {
         setStatus(st);
         if (st.status === 'paid') {
           stopPolling();
+          notifyParentPaid(st);
           setRedirecting(true);
           window.setTimeout(() => {
-            window.location.assign(st.redirectUrl);
+            if (!isIframe) {
+              window.location.assign(st.redirectUrl);
+            }
           }, 1800);
         }
       } catch {
@@ -166,16 +201,19 @@ export default function ProxyPay() {
     void poll();
     pollRef.current = setInterval(() => void poll(), POLL_INTERVAL_MS);
     timeoutRef.current = setTimeout(stopPolling, POLL_TIMEOUT_MS);
-  }, [id, stopPolling]);
+  }, [id, stopPolling, notifyParentPaid, isIframe]);
 
-  // If already paid on load, redirect straight away
+  // If already paid on load, redirect straight away (unless inside iframe)
   useEffect(() => {
     if (status?.status === 'paid' && !redirecting) {
+      notifyParentPaid(status);
       setRedirecting(true);
-      const t = window.setTimeout(() => window.location.assign(status.redirectUrl), 1800);
-      return () => window.clearTimeout(t);
+      if (!isIframe) {
+        const t = window.setTimeout(() => window.location.assign(status.redirectUrl), 1800);
+        return () => window.clearTimeout(t);
+      }
     }
-  }, [status, redirecting]);
+  }, [status, redirecting, notifyParentPaid, isIframe]);
 
   const handlePay = async () => {
     if (!id || !info) return;
@@ -236,9 +274,12 @@ export default function ProxyPay() {
               },
             );
             setStatus(st);
+            notifyParentPaid(st);
             setPaying(false);
             setRedirecting(true);
-            window.setTimeout(() => window.location.assign(st.redirectUrl), 1800);
+            if (!isIframe) {
+              window.setTimeout(() => window.location.assign(st.redirectUrl), 1800);
+            }
           } catch (e) {
             // Verify failed (or already handled) — fall back to polling the webhook path
             startPolling();
@@ -257,7 +298,7 @@ export default function ProxyPay() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center">
+      <div className={isIframe ? "w-full py-12 flex items-center justify-center bg-white" : "min-h-screen bg-surface flex items-center justify-center"}>
         <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
       </div>
     );
@@ -265,8 +306,8 @@ export default function ProxyPay() {
 
   if (error && !info) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center px-5">
-        <div className="max-w-sm w-full bg-surface-card border border-surface-border rounded-2xl p-6 text-center">
+      <div className={isIframe ? "w-full py-6 flex items-center justify-center px-4 bg-white" : "min-h-screen bg-surface flex items-center justify-center px-5"}>
+        <div className={isIframe ? "w-full text-center" : "max-w-sm w-full bg-surface-card border border-surface-border rounded-2xl p-6 text-center"}>
           <XCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
           <h1 className="font-display text-lg font-bold text-stone-900">Invalid payment link</h1>
           <p className="text-stone-500 text-sm mt-2">{error}</p>
@@ -278,19 +319,19 @@ export default function ProxyPay() {
   const paid = status?.status === 'paid';
 
   return (
-    <div className="min-h-screen bg-surface flex items-center justify-center px-5 py-10">
-      <div className="max-w-sm w-full bg-surface-card border border-surface-border rounded-2xl p-6 shadow-sm">
-        <div className="text-center mb-5">
+    <div className={isIframe ? "w-full bg-white flex flex-col items-center justify-center px-3 py-2" : "min-h-screen bg-surface flex items-center justify-center px-5 py-10"}>
+      <div className={isIframe ? "w-full max-w-sm bg-white" : "max-w-sm w-full bg-surface-card border border-surface-border rounded-2xl p-6 shadow-sm"}>
+        <div className="text-center mb-4">
           <p className="text-stone-500 text-xs uppercase tracking-wide">Secure payment</p>
-          <div className="flex items-center justify-center gap-1 mt-2 text-stone-900">
+          <div className="flex items-center justify-center gap-1 mt-1 text-stone-900">
             <IndianRupee className="w-6 h-6 text-brand-600" />
             <span className="font-display text-4xl font-bold">{info?.amount}</span>
           </div>
           {info?.referenceId && (
-            <p className="text-stone-500 text-xs mt-2">Ref: {info.referenceId}</p>
+            <p className="text-stone-500 text-xs mt-1">Ref: {info.referenceId}</p>
           )}
           {info?.description && (
-            <p className="text-stone-600 text-sm mt-1">{info.description}</p>
+            <p className="text-stone-600 text-xs mt-1">{info.description}</p>
           )}
         </div>
 
@@ -299,20 +340,54 @@ export default function ProxyPay() {
             <CheckCircle className="w-14 h-14 text-green-500" />
             <p className="text-stone-900 font-semibold">Payment successful!</p>
             <p className="text-stone-500 text-sm text-center">
-              {redirecting ? 'Taking you back to complete your booking…' : 'Confirmed.'}
+              {isIframe ? 'Payment confirmed.' : redirecting ? 'Taking you back to complete your booking…' : 'Confirmed.'}
             </p>
-            <Loader2 className="w-5 h-5 text-brand-600 animate-spin" />
-            <button
-              type="button"
-              onClick={() => window.location.assign(status.redirectUrl)}
-              className="text-brand-600 text-sm font-medium underline mt-1"
-            >
-              Continue now
-            </button>
+            {!isIframe && (
+              <>
+                <Loader2 className="w-5 h-5 text-brand-600 animate-spin" />
+                <button
+                  type="button"
+                  onClick={() => window.location.assign(status.redirectUrl)}
+                  className="text-brand-600 text-sm font-medium underline mt-1"
+                >
+                  Continue now
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <>
-            {upiString ? (
+            {info?.qrImageUrl ? (
+              <>
+                <div className="mx-auto block w-fit rounded-2xl border-2 border-stone-200 bg-white p-2">
+                  <img
+                    src={info.qrImageUrl}
+                    alt="Razorpay UPI QR Code"
+                    className="h-52 w-52 rounded-xl object-contain"
+                  />
+                </div>
+                <p className="mt-2 text-center text-xs text-stone-500">
+                  Scan the Razorpay QR with any UPI app
+                </p>
+                {upiString ? (
+                  <button
+                    type="button"
+                    onClick={() => window.location.assign(upiString)}
+                    className="mt-3 w-full rounded-xl bg-brand-600 px-4 py-3 text-base font-semibold text-white transition-colors hover:bg-brand-700"
+                  >
+                    Pay via UPI App
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  disabled={paying}
+                  className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-medium text-brand-600 underline disabled:opacity-60"
+                >
+                  {paying ? 'Opening payment…' : 'More payment options'}
+                </button>
+              </>
+            ) : upiString ? (
               <>
                 <a
                   href={upiString}
@@ -325,7 +400,7 @@ export default function ProxyPay() {
                 >
                   <canvas ref={qrCanvasRef} className="block rounded-xl" />
                 </a>
-                <p className="mt-3 text-center text-sm text-stone-500">
+                <p className="mt-2 text-center text-xs text-stone-500">
                   Opening your UPI app… or scan the QR
                 </p>
                 <button
@@ -366,16 +441,11 @@ export default function ProxyPay() {
                 </button>
               </>
             )}
-            <div className="mt-4 flex items-center justify-center gap-1.5 text-stone-400">
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-stone-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span className="text-xs">Waiting for payment confirmation…</span>
             </div>
-            {error && <p className="text-red-500 text-xs text-center mt-3">{error}</p>}
-            {info?.description?.startsWith('Chart alert') && (
-              <p className="text-stone-500 text-xs text-center mt-3">
-                100% guaranteed refund if full confirmed ticket not found
-              </p>
-            )}
+            {error && <p className="text-red-500 text-xs text-center mt-2">{error}</p>}
           </>
         )}
       </div>

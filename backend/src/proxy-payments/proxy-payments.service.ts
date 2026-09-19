@@ -36,6 +36,8 @@ export interface ProxyPaymentCreateResult {
   razorpayKeyId?: string;
   /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
   upiString?: string;
+  /** Official Razorpay QR image URL (rzp.io). */
+  qrImageUrl?: string;
 }
 
 export interface ProxyPaymentPublic {
@@ -48,6 +50,8 @@ export interface ProxyPaymentPublic {
   razorpayKeyId?: string;
   /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
   upiString?: string;
+  /** Official Razorpay QR image URL (rzp.io). */
+  qrImageUrl?: string;
   /** Contact details from the source site, for Razorpay Checkout prefill. */
   customerName: string | null;
   customerMobile: string | null;
@@ -132,6 +136,7 @@ export class ProxyPaymentsService {
       razorpayOrderId: razorpayOrderId ?? undefined,
       razorpayKeyId: keyId,
       upiString: upiString || undefined,
+      qrImageUrl: saved.qrImageUrl ?? undefined,
     };
   }
 
@@ -143,13 +148,15 @@ export class ProxyPaymentsService {
   }
 
   /** Public: (re)create the UPI QR content if the page needs it. */
-  async ensureQr(id: string): Promise<{ upiString: string }> {
+  async ensureQr(
+    id: string,
+  ): Promise<{ upiString: string; qrImageUrl?: string }> {
     const payment = await this.findOrThrow(id);
     const upiString = await this.ensureRazorpayQr(payment);
-    if (!upiString) {
+    if (!upiString && !payment.qrImageUrl) {
       throw new BadRequestException('Could not create UPI QR');
     }
-    return { upiString };
+    return { upiString, qrImageUrl: payment.qrImageUrl ?? undefined };
   }
 
   async ensureOrder(
@@ -436,6 +443,7 @@ export class ProxyPaymentsService {
       razorpayOrderId: p.razorpayOrderId,
       razorpayKeyId: this.config.get<string>('RAZORPAY_KEY_ID') ?? undefined,
       upiString: upiString || undefined,
+      qrImageUrl: p.qrImageUrl ?? undefined,
       customerName: p.customerName,
       customerMobile: p.customerMobile,
       customerEmail: p.customerEmail,
@@ -562,11 +570,18 @@ export class ProxyPaymentsService {
           close_by: closeBy,
         } as Parameters<Razorpay['qrCode']['create']>[0])) as unknown as {
           id?: string;
+          image_url?: string;
+          image_content?: string;
         };
         if (!qr?.id) return '';
         payment.razorpayQrId = qr.id;
+        if (qr.image_url) {
+          payment.qrImageUrl = qr.image_url;
+        }
         await this.repo.save(payment);
-        this.logger.log(`Proxy payment ${payment.id}: Razorpay QR ${qr.id}`);
+        this.logger.log(
+          `Proxy payment ${payment.id}: Razorpay QR ${qr.id} (image: ${payment.qrImageUrl ?? 'none'})`,
+        );
       }
       return this.fetchQrContent(payment);
     } catch (err) {
@@ -581,9 +596,14 @@ export class ProxyPaymentsService {
   private async fetchQrContent(payment: ProxyPayment): Promise<string> {
     if (!payment.razorpayQrId) return '';
     try {
-      const fetched = await this.razorpay.qrCode.fetch(payment.razorpayQrId);
-      const withContent = fetched as RazorpayQrFetchResponse;
-      return withContent?.image_content ?? '';
+      const fetched = (await this.razorpay.qrCode.fetch(
+        payment.razorpayQrId,
+      )) as unknown as RazorpayQrFetchResponse;
+      if (fetched?.image_url && !payment.qrImageUrl) {
+        payment.qrImageUrl = fetched.image_url;
+        await this.repo.save(payment);
+      }
+      return fetched?.image_content ?? '';
     } catch (err) {
       this.logger.warn(
         `Could not fetch QR content for ${payment.razorpayQrId}: ${err instanceof Error ? err.message : String(err)}`,

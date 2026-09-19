@@ -122,6 +122,15 @@ export class ProxyPayment {
   })
   razorpayQrId: string | null;
 
+  /** Official Razorpay QR image URL (rzp.io) for direct display or iframe embed. */
+  @Column({
+    name: 'qr_image_url',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
+  qrImageUrl: string | null;
+
   @Column({
     name: 'callback_status',
     type: 'varchar',
