@@ -64,6 +64,7 @@ export default function ProxyPay() {
   const [upiString, setUpiString] = useState<string | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const intentOpenedRef = useRef(false);
+  const checkoutAutoOpenedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,7 +101,8 @@ export default function ProxyPay() {
 
   useEffect(() => stopPolling, [stopPolling]);
 
-  // Load payment-link details, then fetch the UPI intent string.
+  // Load payment-link details, then fetch the UPI intent string (standalone
+  // only — embedded mode goes straight to Checkout and needs no QR).
   // The page's only job is opening the intent: it auto-opens on load and
   // offers QR + retry CTA as fallback (desktop / blocked navigation).
   useEffect(() => {
@@ -123,8 +125,8 @@ export default function ProxyPay() {
           setStatus(st);
           notifyParentPaid(st);
         } else if (res.upiString) {
-          setUpiString(res.upiString);
-        } else {
+          if (!isIframe) setUpiString(res.upiString);
+        } else if (!isIframe) {
           try {
             const qr = await api.post<{ upiString: string; qrImageUrl?: string }>(
               `/proxy-payments/${encodeURIComponent(id)}/ensure-qr`,
@@ -149,7 +151,7 @@ export default function ProxyPay() {
     return () => {
       cancelled = true;
     };
-  }, [id, notifyParentPaid]);
+  }, [id, isIframe, notifyParentPaid]);
 
   // Auto-open the UPI intent once (mobile app switch). Desktop/no-handler
   // falls through to the QR + retry CTA below. (Skipped when embedded in iframe).
@@ -296,6 +298,20 @@ export default function ProxyPay() {
     }
   };
 
+  const handlePayRef = useRef(handlePay);
+  handlePayRef.current = handlePay;
+
+  // Embedded (iframe): show none of the QR / UPI content — open Razorpay
+  // Checkout directly, i.e. the same screen "More payment options" opens.
+  // If the user dismisses it or auto-open fails, the fallback Pay button
+  // below lets them retry.
+  useEffect(() => {
+    if (!isIframe || loading || !info) return;
+    if (status?.status === 'paid' || checkoutAutoOpenedRef.current) return;
+    checkoutAutoOpenedRef.current = true;
+    void handlePayRef.current();
+  }, [isIframe, loading, info, status]);
+
   if (loading) {
     return (
       <div className={isIframe ? "w-full py-12 flex items-center justify-center bg-white" : "min-h-screen bg-surface flex items-center justify-center"}>
@@ -355,6 +371,33 @@ export default function ProxyPay() {
               </>
             )}
           </div>
+        ) : isIframe ? (
+          <>
+            <div className="flex flex-col items-center gap-3 py-4">
+              {paying ? (
+                <>
+                  <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
+                  <p className="text-stone-500 text-sm text-center">
+                    Opening secure payment…
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl px-4 py-3.5 text-base transition-colors flex items-center justify-center gap-2"
+                >
+                  <IndianRupee className="w-5 h-5" />
+                  Pay ₹{info?.amount}
+                </button>
+              )}
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-1.5 text-stone-400">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span className="text-xs">Waiting for payment confirmation…</span>
+            </div>
+            {error && <p className="text-red-500 text-xs text-center mt-2">{error}</p>}
+          </>
         ) : (
           <>
             {info?.qrImageUrl ? (
