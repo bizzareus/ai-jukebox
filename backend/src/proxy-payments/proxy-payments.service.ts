@@ -14,15 +14,12 @@ import { validateWebhookSignature } from 'razorpay/dist/utils/razorpay-utils';
 import { ProxyPayment, ProxyPaymentStatus } from './proxy-payment.entity';
 import { CreateProxyPaymentDto } from './dto/create-proxy-payment.dto';
 import {
-  QR_CLOSE_BY_SECONDS,
   QR_FETCH_PAYMENTS_COUNT,
-  RAZORPAY_DESCRIPTION_MAX_LENGTH,
   RAZORPAY_RECEIPT_MAX_LENGTH,
 } from '../payments/payments.constants';
 import type {
   RazorpayOrderCreateResponse,
   RazorpayQrFetchPaymentsResponse,
-  RazorpayQrFetchResponse,
 } from '../payments/types/razorpay.types';
 
 export interface ProxyPaymentCreateResult {
@@ -34,10 +31,6 @@ export interface ProxyPaymentCreateResult {
   referenceId?: string;
   razorpayOrderId?: string;
   razorpayKeyId?: string;
-  /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
-  upiString?: string;
-  /** Official Razorpay QR image URL (rzp.io). */
-  qrImageUrl?: string;
 }
 
 export interface ProxyPaymentPublic {
@@ -48,10 +41,6 @@ export interface ProxyPaymentPublic {
   status: ProxyPaymentStatus;
   razorpayOrderId: string | null;
   razorpayKeyId?: string;
-  /** UPI intent string for the Razorpay UPI QR (scan / Pay via UPI). */
-  upiString?: string;
-  /** Official Razorpay QR image URL (rzp.io). */
-  qrImageUrl?: string;
   /** Contact details from the source site, for Razorpay Checkout prefill. */
   customerName: string | null;
   customerMobile: string | null;
@@ -118,9 +107,6 @@ export class ProxyPaymentsService {
     const saved = await this.repo.save(payment);
 
     const razorpayOrderId = await this.ensureRazorpayOrder(saved);
-    // Best-effort: the pay page prefers the UPI QR and falls back to
-    // Razorpay Checkout when QR creation is unavailable.
-    const upiString = await this.ensureRazorpayQr(saved);
 
     this.logger.log(
       `Proxy payment ${saved.id} created: ₹${saved.amount} ref=${saved.referenceId ?? 'n/a'} → ${this.buildPayUrl(saved.id)}`,
@@ -135,8 +121,6 @@ export class ProxyPaymentsService {
       referenceId: saved.referenceId ?? undefined,
       razorpayOrderId: razorpayOrderId ?? undefined,
       razorpayKeyId: keyId,
-      upiString: upiString || undefined,
-      qrImageUrl: saved.qrImageUrl ?? undefined,
     };
   }
 
@@ -144,19 +128,7 @@ export class ProxyPaymentsService {
 
   async getPublic(id: string): Promise<ProxyPaymentPublic> {
     const payment = await this.findOrThrow(id);
-    return this.toPublic(payment, await this.fetchQrContent(payment));
-  }
-
-  /** Public: (re)create the UPI QR content if the page needs it. */
-  async ensureQr(
-    id: string,
-  ): Promise<{ upiString: string; qrImageUrl?: string }> {
-    const payment = await this.findOrThrow(id);
-    const upiString = await this.ensureRazorpayQr(payment);
-    if (!upiString && !payment.qrImageUrl) {
-      throw new BadRequestException('Could not create UPI QR');
-    }
-    return { upiString, qrImageUrl: payment.qrImageUrl ?? undefined };
+    return this.toPublic(payment);
   }
 
   async ensureOrder(
@@ -216,24 +188,28 @@ export class ProxyPaymentsService {
   ): Promise<ProxyPaymentRefundResult> {
     const payment = await this.findOrThrow(id);
     if (payment.status !== ProxyPaymentStatus.PAID) {
+      await this.syncFromRazorpay(payment);
+    }
+    const fresh = await this.findOrThrow(id);
+    if (fresh.status !== ProxyPaymentStatus.PAID) {
       throw new BadRequestException('Only PAID payments can be refunded');
     }
-    if (!payment.razorpayPaymentId) {
+    if (!fresh.razorpayPaymentId) {
       throw new BadRequestException('No Razorpay payment id recorded');
     }
-    if (payment.razorpayRefundId) {
+    if (fresh.razorpayRefundId) {
       return {
         status: 'already_refunded',
-        amount: payment.refundAmount ?? payment.amount,
-        referenceId: payment.referenceId,
-        razorpayPaymentId: payment.razorpayPaymentId,
-        razorpayRefundId: payment.razorpayRefundId,
-        refundedAt: payment.refundedAt ?? payment.updatedAt,
+        amount: fresh.refundAmount ?? fresh.amount,
+        referenceId: fresh.referenceId,
+        razorpayPaymentId: fresh.razorpayPaymentId,
+        razorpayRefundId: fresh.razorpayRefundId,
+        refundedAt: fresh.refundedAt ?? fresh.updatedAt,
       };
     }
 
-    const amount = opts?.amount ?? payment.amount;
-    if (!Number.isInteger(amount) || amount < 1 || amount > payment.amount) {
+    const amount = opts?.amount ?? fresh.amount;
+    if (!Number.isInteger(amount) || amount < 1 || amount > fresh.amount) {
       throw new BadRequestException('Refund amount must cover 1..paid amount');
     }
     const reason =
@@ -241,47 +217,96 @@ export class ProxyPaymentsService {
 
     try {
       const refund = (await this.razorpay.payments.refund(
-        payment.razorpayPaymentId,
+        fresh.razorpayPaymentId,
         {
           amount: amount * 100,
           notes: {
-            proxy_payment_id: payment.id,
+            proxy_payment_id: fresh.id,
             reference_id:
-              opts?.referenceId?.trim() || payment.referenceId || '',
+              opts?.referenceId?.trim() || fresh.referenceId || '',
             reason,
           },
         },
       )) as unknown as { id?: string };
       if (!refund?.id) throw new Error('Empty refund response from Razorpay');
 
-      payment.refundStatus = 'succeeded';
-      payment.razorpayRefundId = refund.id;
-      payment.refundAmount = amount;
-      payment.refundReason = reason;
-      payment.refundedAt = new Date();
-      payment.refundError = null;
-      await this.repo.save(payment);
+      fresh.refundStatus = 'succeeded';
+      fresh.razorpayRefundId = refund.id;
+      fresh.refundAmount = amount;
+      fresh.refundReason = reason;
+      fresh.refundedAt = new Date();
+      fresh.refundError = null;
+      await this.repo.save(fresh);
       this.logger.log(
-        `Proxy payment ${payment.id} refunded ${refund.id} ₹${amount} (${reason})`,
+        `Proxy payment ${fresh.id} refunded ${refund.id} ₹${amount} (${reason})`,
       );
       return {
         status: 'refunded',
         amount,
-        referenceId: payment.referenceId,
-        razorpayPaymentId: payment.razorpayPaymentId,
+        referenceId: fresh.referenceId,
+        razorpayPaymentId: fresh.razorpayPaymentId,
         razorpayRefundId: refund.id,
-        refundedAt: payment.refundedAt,
+        refundedAt: fresh.refundedAt,
       };
     } catch (err) {
       const detail =
         (err as { error?: unknown; message?: string })?.error ??
         (err as Error)?.message ??
         String(err);
-      payment.refundStatus = 'failed';
-      payment.refundError = JSON.stringify(detail).slice(0, 1000);
-      await this.repo.save(payment);
+      const errStr = JSON.stringify(detail);
+
+      // If Razorpay reports that this payment has already been refunded
+      if (
+        errStr.toLowerCase().includes('already refunded') ||
+        errStr.toLowerCase().includes('fully refunded already')
+      ) {
+        let existingRefundId: string | null = null;
+        try {
+          const fetchRes = await (this.razorpay.payments as any).refunds(
+            fresh.razorpayPaymentId,
+          );
+          existingRefundId =
+            fetchRes?.items?.[0]?.id ??
+            fetchRes?.items?.[0]?.refund_id ??
+            null;
+        } catch (fetchErr) {
+          this.logger.warn(
+            `Failed to fetch refunds for ${fresh.razorpayPaymentId}: ${fetchErr}`,
+          );
+        }
+
+        const refundId =
+          existingRefundId ??
+          fresh.razorpayRefundId ??
+          `rfnd_already_refunded_${fresh.id}`;
+
+        fresh.refundStatus = 'succeeded';
+        fresh.razorpayRefundId = refundId;
+        fresh.refundAmount = amount;
+        fresh.refundReason = reason;
+        fresh.refundedAt = fresh.refundedAt ?? new Date();
+        fresh.refundError = null;
+        await this.repo.save(fresh);
+
+        this.logger.log(
+          `Proxy payment ${fresh.id} was already refunded on Razorpay (${refundId})`,
+        );
+
+        return {
+          status: 'already_refunded',
+          amount,
+          referenceId: fresh.referenceId,
+          razorpayPaymentId: fresh.razorpayPaymentId,
+          razorpayRefundId: refundId,
+          refundedAt: fresh.refundedAt,
+        };
+      }
+
+      fresh.refundStatus = 'failed';
+      fresh.refundError = errStr.slice(0, 1000);
+      await this.repo.save(fresh);
       this.logger.warn(
-        `Proxy refund failed for ${payment.id}: ${payment.refundError}`,
+        `Proxy refund failed for ${fresh.id}: ${fresh.refundError}`,
       );
       throw new BadRequestException('Refund failed, please retry');
     }
@@ -433,7 +458,7 @@ export class ProxyPaymentsService {
     return payment;
   }
 
-  private toPublic(p: ProxyPayment, upiString?: string): ProxyPaymentPublic {
+  private toPublic(p: ProxyPayment): ProxyPaymentPublic {
     return {
       id: p.id,
       amount: p.amount,
@@ -442,8 +467,6 @@ export class ProxyPaymentsService {
       status: p.status,
       razorpayOrderId: p.razorpayOrderId,
       razorpayKeyId: this.config.get<string>('RAZORPAY_KEY_ID') ?? undefined,
-      upiString: upiString || undefined,
-      qrImageUrl: p.qrImageUrl ?? undefined,
       customerName: p.customerName,
       customerMobile: p.customerMobile,
       customerEmail: p.customerEmail,
@@ -542,73 +565,6 @@ export class ProxyPaymentsService {
           `Proxy QR sync failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-    }
-  }
-
-  /**
-   * Create (once) the single-use Razorpay UPI QR and return its intent string
-   * (`upi://pay?...`) for scan / Pay-via-UPI flows. Best-effort: returns ''
-   * when Razorpay is unavailable so callers can fall back to Checkout.
-   */
-  private async ensureRazorpayQr(payment: ProxyPayment): Promise<string> {
-    try {
-      if (!payment.razorpayQrId) {
-        const closeBy = Math.floor(Date.now() / 1000) + QR_CLOSE_BY_SECONDS;
-        const qr = (await this.razorpay.qrCode.create({
-          type: 'upi_qr',
-          name: `Muzobox ${payment.amount}`.slice(
-            0,
-            RAZORPAY_DESCRIPTION_MAX_LENGTH,
-          ),
-          usage: 'single_use',
-          fixed_amount: true,
-          payment_amount: payment.amount * 100,
-          description: (
-            payment.description ??
-            (payment.referenceId ? `Ref: ${payment.referenceId}` : 'Payment')
-          ).slice(0, RAZORPAY_DESCRIPTION_MAX_LENGTH),
-          close_by: closeBy,
-        } as Parameters<Razorpay['qrCode']['create']>[0])) as unknown as {
-          id?: string;
-          image_url?: string;
-          image_content?: string;
-        };
-        if (!qr?.id) return '';
-        payment.razorpayQrId = qr.id;
-        if (qr.image_url) {
-          payment.qrImageUrl = qr.image_url;
-        }
-        await this.repo.save(payment);
-        this.logger.log(
-          `Proxy payment ${payment.id}: Razorpay QR ${qr.id} (image: ${payment.qrImageUrl ?? 'none'})`,
-        );
-      }
-      return this.fetchQrContent(payment);
-    } catch (err) {
-      this.logger.warn(
-        `Proxy QR creation failed for ${payment.id}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return '';
-    }
-  }
-
-  /** UPI intent string for an existing QR id ('' when unavailable). */
-  private async fetchQrContent(payment: ProxyPayment): Promise<string> {
-    if (!payment.razorpayQrId) return '';
-    try {
-      const fetched = (await this.razorpay.qrCode.fetch(
-        payment.razorpayQrId,
-      )) as unknown as RazorpayQrFetchResponse;
-      if (fetched?.image_url && !payment.qrImageUrl) {
-        payment.qrImageUrl = fetched.image_url;
-        await this.repo.save(payment);
-      }
-      return fetched?.image_content ?? '';
-    } catch (err) {
-      this.logger.warn(
-        `Could not fetch QR content for ${payment.razorpayQrId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return '';
     }
   }
 
