@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import QRCode from 'qrcode';
 import { CheckCircle, IndianRupee, Loader2, XCircle } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -12,8 +11,6 @@ interface ProxyPublic {
   status: 'created' | 'paid' | 'failed';
   razorpayOrderId: string | null;
   razorpayKeyId?: string;
-  upiString?: string;
-  qrImageUrl?: string;
   customerName: string | null;
   customerMobile: string | null;
   customerEmail: string | null;
@@ -61,9 +58,6 @@ export default function ProxyPay() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
-  const [upiString, setUpiString] = useState<string | null>(null);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
-  const intentOpenedRef = useRef(false);
   const checkoutAutoOpenedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,10 +95,7 @@ export default function ProxyPay() {
 
   useEffect(() => stopPolling, [stopPolling]);
 
-  // Load payment-link details, then fetch the UPI intent string (standalone
-  // only — embedded mode goes straight to Checkout and needs no QR).
-  // The page's only job is opening the intent: it auto-opens on load and
-  // offers QR + retry CTA as fallback (desktop / blocked navigation).
+  // Load payment-link details. Payment is handled exclusively by Checkout.
   useEffect(() => {
     if (!id) {
       setError('Invalid payment link.');
@@ -124,23 +115,6 @@ export default function ProxyPay() {
           if (cancelled) return;
           setStatus(st);
           notifyParentPaid(st);
-        } else if (res.upiString) {
-          if (!isIframe) setUpiString(res.upiString);
-        } else if (!isIframe) {
-          try {
-            const qr = await api.post<{ upiString: string; qrImageUrl?: string }>(
-              `/proxy-payments/${encodeURIComponent(id)}/ensure-qr`,
-              {},
-            );
-            if (!cancelled) {
-              if (qr?.upiString) setUpiString(qr.upiString);
-              if (qr?.qrImageUrl && !res.qrImageUrl) {
-                setInfo((prev) => (prev ? { ...prev, qrImageUrl: qr.qrImageUrl } : prev));
-              }
-            }
-          } catch {
-            // QR unavailable — checkout fallback below stays available.
-          }
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Payment link not found.');
@@ -153,31 +127,7 @@ export default function ProxyPay() {
     };
   }, [id, isIframe, notifyParentPaid]);
 
-  // Auto-open the UPI intent once (mobile app switch). Desktop/no-handler
-  // falls through to the QR + retry CTA below. (Skipped when embedded in iframe).
-  useEffect(() => {
-    if (isIframe) return;
-    if (!upiString || intentOpenedRef.current) return;
-    intentOpenedRef.current = true;
-    window.location.assign(upiString);
-  }, [upiString, isIframe]);
-
-  // Draw the UPI QR for scan-and-pay fallback when official image is absent.
-  useEffect(() => {
-    if (!upiString || info?.qrImageUrl) return;
-    const raf = requestAnimationFrame(() => {
-      if (qrCanvasRef.current) {
-        QRCode.toCanvas(qrCanvasRef.current, upiString, {
-          width: 220,
-          margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-        });
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [upiString, info?.qrImageUrl]);
-
-  // Poll status after checkout is opened (webhook / UPI intent fallback)
+  // Poll status after Checkout is opened in case the webhook wins the race.
   const startPolling = useCallback(() => {
     if (!id || pollRef.current) return;
     const poll = async () => {
@@ -301,8 +251,7 @@ export default function ProxyPay() {
   const handlePayRef = useRef(handlePay);
   handlePayRef.current = handlePay;
 
-  // Embedded (iframe): show none of the QR / UPI content — open Razorpay
-  // Checkout directly, i.e. the same screen "More payment options" opens.
+  // Embedded (iframe): open Razorpay Checkout directly.
   // If the user dismisses it or auto-open fails, the fallback Pay button
   // below lets them retry.
   useEffect(() => {
@@ -371,120 +320,29 @@ export default function ProxyPay() {
               </>
             )}
           </div>
-        ) : isIframe ? (
-          <>
-            <div className="flex flex-col items-center gap-3 py-4">
-              {paying ? (
-                <>
-                  <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
-                  <p className="text-stone-500 text-sm text-center">
-                    Opening secure payment…
-                  </p>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handlePay}
-                  className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl px-4 py-3.5 text-base transition-colors flex items-center justify-center gap-2"
-                >
-                  <IndianRupee className="w-5 h-5" />
-                  Pay ₹{info?.amount}
-                </button>
-              )}
-            </div>
-            <div className="mt-1 flex items-center justify-center gap-1.5 text-stone-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span className="text-xs">Waiting for payment confirmation…</span>
-            </div>
-            {error && <p className="text-red-500 text-xs text-center mt-2">{error}</p>}
-          </>
         ) : (
           <>
-            {info?.qrImageUrl ? (
-              <>
-                <div className="mx-auto block w-fit rounded-2xl border-2 border-stone-200 bg-white p-2">
-                  <img
-                    src={info.qrImageUrl}
-                    alt="Razorpay UPI QR Code"
-                    className="h-52 w-52 rounded-xl object-contain"
-                  />
-                </div>
-                <p className="mt-2 text-center text-xs text-stone-500">
-                  Scan the Razorpay QR with any UPI app
-                </p>
-                {upiString ? (
-                  <button
-                    type="button"
-                    onClick={() => window.location.assign(upiString)}
-                    className="mt-3 w-full rounded-xl bg-brand-600 px-4 py-3 text-base font-semibold text-white transition-colors hover:bg-brand-700"
-                  >
-                    Pay via UPI App
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handlePay}
-                  disabled={paying}
-                  className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-medium text-brand-600 underline disabled:opacity-60"
-                >
-                  {paying ? 'Opening payment…' : 'More payment options'}
-                </button>
-              </>
-            ) : upiString ? (
-              <>
-                <a
-                  href={upiString}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.location.assign(upiString);
-                  }}
-                  aria-label="Open UPI app to pay"
-                  className="mx-auto block w-fit cursor-pointer rounded-2xl border-2 border-stone-200 bg-white p-1 transition-colors hover:border-stone-300 active:opacity-90"
-                >
-                  <canvas ref={qrCanvasRef} className="block rounded-xl" />
-                </a>
-                <p className="mt-2 text-center text-xs text-stone-500">
-                  Opening your UPI app… or scan the QR
-                </p>
-                <button
-                  type="button"
-                  onClick={() => window.location.assign(upiString)}
-                  className="mt-3 w-full rounded-xl bg-brand-600 px-4 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-700"
-                >
-                  Pay via UPI
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePay}
-                  disabled={paying}
-                  className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-medium text-brand-600 underline disabled:opacity-60"
-                >
-                  {paying ? 'Opening payment…' : 'More payment options'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={handlePay}
-                  disabled={paying}
-                  className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold rounded-xl px-4 py-3.5 text-base transition-colors flex items-center justify-center gap-2"
-                >
-                  {paying ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Opening payment…
-                    </>
-                  ) : (
-                    <>
-                      <IndianRupee className="w-5 h-5" />
-                      Pay ₹{info?.amount}
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-            <div className="mt-3 flex items-center justify-center gap-1.5 text-stone-400">
+            <div className="flex flex-col items-center gap-3 py-4">
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={paying}
+                className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold rounded-xl px-4 py-3.5 text-base transition-colors flex items-center justify-center gap-2"
+              >
+                {paying ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Opening payment…
+                  </>
+                ) : (
+                  <>
+                    <IndianRupee className="w-5 h-5" />
+                    Pay ₹{info?.amount}
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-1.5 text-stone-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span className="text-xs">Waiting for payment confirmation…</span>
             </div>

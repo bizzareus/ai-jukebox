@@ -222,8 +222,7 @@ export class ProxyPaymentsService {
           amount: amount * 100,
           notes: {
             proxy_payment_id: fresh.id,
-            reference_id:
-              opts?.referenceId?.trim() || fresh.referenceId || '',
+            reference_id: opts?.referenceId?.trim() || fresh.referenceId || '',
             reason,
           },
         },
@@ -266,9 +265,7 @@ export class ProxyPaymentsService {
             fresh.razorpayPaymentId,
           );
           existingRefundId =
-            fetchRes?.items?.[0]?.id ??
-            fetchRes?.items?.[0]?.refund_id ??
-            null;
+            fetchRes?.items?.[0]?.id ?? fetchRes?.items?.[0]?.refund_id ?? null;
         } catch (fetchErr) {
           this.logger.warn(
             `Failed to fetch refunds for ${fresh.razorpayPaymentId}: ${fetchErr}`,

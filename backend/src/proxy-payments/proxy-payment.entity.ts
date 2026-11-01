@@ -109,10 +109,7 @@ export class ProxyPayment {
   })
   razorpayPaymentId: string | null;
 
-  /**
-   * Razorpay UPI QR id (upi_qr, single_use) shown on the hosted `/pay/:id`
-   * page. QR payments credit via the `qr_code.credited` webhook.
-   */
+  /** Legacy QR id retained so already-created QR payments can still settle. */
   @Column({
     name: 'razorpay_qr_id',
     type: 'varchar',
@@ -122,7 +119,7 @@ export class ProxyPayment {
   })
   razorpayQrId: string | null;
 
-  /** Official Razorpay QR image URL (rzp.io) for direct display or iframe embed. */
+  /** Legacy QR image retained for existing records; no longer exposed. */
   @Column({
     name: 'qr_image_url',
     type: 'varchar',
